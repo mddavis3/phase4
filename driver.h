@@ -1,4 +1,4 @@
-
+#define DEBUG4 1
 
 typedef struct driver_proc * driver_proc_ptr;
 

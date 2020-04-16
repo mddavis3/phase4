@@ -1,7 +1,10 @@
 /*
-Michael Davis
+phase4.c
+
+Michael Davis, Aaron Posey
 4/15/2020
 CSCV452 Phase 4
+
 */
 
 #include <stdlib.h>
@@ -13,8 +16,18 @@ CSCV452 Phase 4
 #include <phase3.h>
 #include <phase4.h>
 #include <usyscall.h>
+#include <libuser.h>
 #include <provided_prototypes.h>
 #include "driver.h"
+
+/* ------------------------- Prototypes ----------------------------------- */
+
+static int	ClockDriver(char *);
+static int	DiskDriver(char *);
+
+/* -------------------------- Globals ------------------------------------- */
+
+static int debugflag4 = 0;
 
 static int running; /*semaphore to synchronize drivers and start3*/
 
@@ -22,14 +35,14 @@ static struct driver_proc Driver_Table[MAXPROC];
 
 static int diskpids[DISK_UNITS];
 
-static int	ClockDriver(char *);
-static int	DiskDriver(char *);
+/* -------------------------- Functions ----------------------------------- */
 
+/* start3 */
 int
 start3(char *arg)
 {
     char	name[128];
-    char        termbuf[10];
+    char    termbuf[10];
     int		i;
     int		clockPID;
     int		pid;
@@ -39,7 +52,7 @@ start3(char *arg)
 
      */
     /* Assignment system call handlers */
-    //sys_vec[SYS_SLEEP]     = sleep_first;
+    //sys_vec[SYS_SLEEP] = sleep_first;
     //more for this phase's system call handlings
 
 
@@ -53,9 +66,10 @@ start3(char *arg)
      */
     running = semcreate_real(0);
     clockPID = fork1("Clock driver", ClockDriver, NULL, USLOSS_MIN_STACK, 2);
-    if (clockPID < 0) {
-	console("start3(): Can't create clock driver\n");
-	halt(1);
+    if (clockPID < 0) 
+    {
+	    console("start3(): Can't create clock driver\n");
+	    halt(1);
     }
     /*
      * Wait for the clock driver to start. The idea is that ClockDriver
@@ -70,11 +84,13 @@ start3(char *arg)
      * driver, and perhaps do something with the pid returned.
      */
 
-    for (i = 0; i < DISK_UNITS; i++) {
+    for (i = 0; i < DISK_UNITS; i++) 
+    {
         //sprintf(buf, "%d", i);
         sprintf(name, "DiskDriver%d", i);
         //diskpids[i] = fork1(name, DiskDriver, buf, USLOSS_MIN_STACK, 2);
-        if (diskpids[i] < 0) {
+        if (diskpids[i] < 0) 
+        {
            console("start3(): Can't create disk driver %d\n", i);
            halt(1);
         }
@@ -98,8 +114,10 @@ start3(char *arg)
      */
     zap(clockPID);  // clock driver
     join(&status); /* for the Clock Driver */
-}
+} /* start3 */
 
+
+/* ClockDriver */
 static int
 ClockDriver(char *arg)
 {
@@ -111,49 +129,56 @@ ClockDriver(char *arg)
      */
     semv_real(running);
     psr_set(psr_get() | PSR_CURRENT_INT);
-    while(! is_zapped()) {
-	result = waitdevice(CLOCK_DEV, 0, &status);
-	if (result != 0) {
-	    return 0;
-	}
-	/*
-	 * Compute the current time and wake up any processes
-	 * whose time has come.
-	 */
+    while(! is_zapped()) 
+    {
+	    result = waitdevice(CLOCK_DEV, 0, &status);
+	    if (result != 0) 
+        {
+	        return 0;
+	    }
+	    /*
+	    * Compute the current time and wake up any processes
+	    * whose time has come.
+	    */
     }
-}
+} /* ClockDriver */
 
+
+/* DiskDriver */
 static int
 DiskDriver(char *arg)
 {
-   int unit = atoi(arg);
-   device_request my_request;
-   int result;
-   int status;
+    int unit = atoi(arg);
+    device_request my_request;
+    int result;
+    int status;
 
-   driver_proc_ptr current_req;
+    driver_proc_ptr current_req;
 
-   //if (DEBUG4 && debugflag4)
-      console("DiskDriver(%d): started\n", unit);
+    if (DEBUG4 && debugflag4)
+    {
+        console("DiskDriver(%d): started\n", unit);
+    }
 
+    /* Get the number of tracks for this disk */
+    my_request.opr  = DISK_TRACKS;
+    //my_request.reg1 = &num_tracks[unit];
 
-   /* Get the number of tracks for this disk */
-   my_request.opr  = DISK_TRACKS;
-   //my_request.reg1 = &num_tracks[unit];
+    result = device_output(DISK_DEV, unit, &my_request);
 
-   result = device_output(DISK_DEV, unit, &my_request);
+    if (result != DEV_OK) 
+    {
+        console("DiskDriver %d: did not get DEV_OK on DISK_TRACKS call\n", unit);
+        console("DiskDriver %d: is the file disk%d present???\n", unit, unit);
+        halt(1);
+    }
 
-   if (result != DEV_OK) {
-      console("DiskDriver %d: did not get DEV_OK on DISK_TRACKS call\n", unit);
-      console("DiskDriver %d: is the file disk%d present???\n", unit, unit);
-      halt(1);
-   }
+    waitdevice(DISK_DEV, unit, &status);
+    if (DEBUG4 && debugflag4)
+    {
+        //console("DiskDriver(%d): tracks = %d\n", unit, num_tracks[unit]);
+    }
 
-   waitdevice(DISK_DEV, unit, &status);
-   //if (DEBUG4 && debugflag4)
-      //console("DiskDriver(%d): tracks = %d\n", unit, num_tracks[unit]);
-
-
-   //more code 
+    //more code 
     return 0;
-}
+} /* DiskDriver */
