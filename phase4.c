@@ -4,7 +4,6 @@ phase4.c
 Michael Davis, Aaron Posey
 4/15/2020
 CSCV452 Phase 4
-
 */
 
 #include <stdlib.h>
@@ -22,8 +21,19 @@ CSCV452 Phase 4
 
 /* ------------------------- Prototypes ----------------------------------- */
 
+int start3 (char *); 
+
 static int	ClockDriver(char *);
 static int	DiskDriver(char *);
+
+static void sleep_first(sysargs *);
+//sleep_real prototype in phase4.h
+static void disk_read_first(sysargs *);
+//disk_read_real prototype in phase4.h
+static void disk_write_first(sysargs *);
+//disk_write_real prototype in phase4.h
+static void disk_size_first(sysargs *);
+//disk_size_real prototype in phase4.h
 
 /* -------------------------- Globals ------------------------------------- */
 
@@ -34,6 +44,8 @@ static int running; /*semaphore to synchronize drivers and start3*/
 static struct driver_proc Driver_Table[MAXPROC];
 
 static int diskpids[DISK_UNITS];
+
+static int num_tracks[DISK_TRACKS]; //added to address DiskDriver references
 
 /* -------------------------- Functions ----------------------------------- */
 
@@ -47,17 +59,16 @@ start3(char *arg)
     int		clockPID;
     int		pid;
     int		status;
-    /*
-     * Check kernel mode here.
 
-     */
+    /* Check kernel mode here */
+
     /* Assignment system call handlers */
-    //sys_vec[SYS_SLEEP] = sleep_first;
-    //more for this phase's system call handlings
-
-
+    sys_vec[SYS_SLEEP] = sleep_first;
+    sys_vec[SYS_DISKREAD] = disk_read_first;
+    sys_vec[SYS_DISKWRITE] = disk_write_first;
+    sys_vec[SYS_DISKSIZE] = disk_size_first;
+    
     /* Initialize the phase 4 process table */
-
 
     /*
      * Create clock device driver 
@@ -71,11 +82,11 @@ start3(char *arg)
 	    console("start3(): Can't create clock driver\n");
 	    halt(1);
     }
+
     /*
      * Wait for the clock driver to start. The idea is that ClockDriver
      * will V the semaphore "running" once it is running.
      */
-
     semp_real(running);
 
     /*
@@ -83,12 +94,11 @@ start3(char *arg)
      * the stack size depending on the complexity of your
      * driver, and perhaps do something with the pid returned.
      */
-
     for (i = 0; i < DISK_UNITS; i++) 
     {
-        //sprintf(buf, "%d", i);
+        sprintf(termbuf, "%d", i); //Michael - I changed buf to termbuf, since termbuf is defined
         sprintf(name, "DiskDriver%d", i);
-        //diskpids[i] = fork1(name, DiskDriver, buf, USLOSS_MIN_STACK, 2);
+        diskpids[i] = fork1(name, DiskDriver, termbuf, USLOSS_MIN_STACK, 2); //Michael - ^^ same here
         if (diskpids[i] < 0) 
         {
            console("start3(): Can't create disk driver %d\n", i);
@@ -97,7 +107,6 @@ start3(char *arg)
     }
     semp_real(running);
     semp_real(running);
-
 
     /*
      * Create first user-level process and wait for it to finish.
@@ -109,11 +118,16 @@ start3(char *arg)
     pid = spawn_real("start4", start4, NULL,  8 * USLOSS_MIN_STACK, 3);
     pid = wait_real(&status);
 
-    /*
-     * Zap the device drivers
-     */
+    /* Zap the device drivers */
     zap(clockPID);  // clock driver
     join(&status); /* for the Clock Driver */
+    for (i = 0; i < DISK_UNITS; i++) //Michael - I added this for loop to zap disk drivers
+    {
+        zap(diskpids[i]);
+        join(&status);
+    }
+
+    quit(0); //is this necessary?
 } /* start3 */
 
 
@@ -124,6 +138,8 @@ ClockDriver(char *arg)
     int result;
     int status;
 
+    //check if zapped, potentially quit(0)
+    
     /*
      * Let the parent know we are running and enable interrupts.
      */
@@ -141,6 +157,8 @@ ClockDriver(char *arg)
 	    * whose time has come.
 	    */
     }
+
+    //check if zapped, potentially quit(0)
 } /* ClockDriver */
 
 
@@ -162,23 +180,169 @@ DiskDriver(char *arg)
 
     /* Get the number of tracks for this disk */
     my_request.opr  = DISK_TRACKS;
-    //my_request.reg1 = &num_tracks[unit];
+    my_request.reg1 = &num_tracks[unit];
+
+    //check if zapped, potentially quit(0)
 
     result = device_output(DISK_DEV, unit, &my_request);
 
     if (result != DEV_OK) 
     {
-        console("DiskDriver %d: did not get DEV_OK on DISK_TRACKS call\n", unit);
-        console("DiskDriver %d: is the file disk%d present???\n", unit, unit);
+        console("DiskDriver (%d): did not get DEV_OK on DISK_TRACKS call\n", unit);
+        console("DiskDriver (%d): is the file disk%d present???\n", unit, unit);
         halt(1);
     }
+
+    //check if zapped, potentially quit(0)
 
     waitdevice(DISK_DEV, unit, &status);
     if (DEBUG4 && debugflag4)
     {
-        //console("DiskDriver(%d): tracks = %d\n", unit, num_tracks[unit]);
+        console("DiskDriver(%d): tracks = %d\n", unit, num_tracks[unit]);
     }
+
+    //check if zapped, potentially quit(0)
 
     //more code 
     return 0;
 } /* DiskDriver */
+
+
+/* sleep_first */
+static void 
+sleep_first(sysargs *args_ptr)
+{
+    int seconds;
+    int result;
+
+    seconds = (int) args_ptr->arg1;
+    //check validity of seconds
+
+    result = sleep_real(seconds);
+    if (result == -1)
+    {
+        console("sleep_first(): sleep_real returned -1, illegal values.\n");
+    }
+    args_ptr->arg4 = (void *) result;
+
+    return;
+} /* sleep_first */
+
+
+/* sleep_real */
+int 
+sleep_real(int seconds)
+{
+    return 0;
+} /* sleep_real */
+
+
+/* disk_read_first */
+static void 
+disk_read_first(sysargs *args_ptr)
+{
+    int unit;
+    int track;
+    int first;
+    int sectors;
+    void *buffer;
+    int status; //inspect how status is applied
+    int result;
+
+    buffer = args_ptr->arg1;
+    sectors = (int) args_ptr->arg2;
+    track = (int) args_ptr->arg3;
+    first = (int) args_ptr->arg4;
+    unit = (int) args_ptr->arg5;
+    //check validity of arguments
+
+    result = disk_read_real(unit, track, first, sectors, buffer);
+    if (result == -1)
+    {
+        console("disk_read_first(): disk_read_real returned -1, illegal values.\n");
+    }
+    args_ptr->arg1 = (void *) status; //further inspection of status required, arg1 should be 0 or disk status register
+    args_ptr->arg4 = (void *) result;
+    return;
+} /* disk_read_first */
+
+
+/* disk_read_real */
+int 
+disk_read_real(int unit, int track, int first, int sectors, void *buffer)
+{
+    return 0;
+} /* disk_read_real */
+
+
+/* disk_write_first */
+static void 
+disk_write_first(sysargs *args_ptr)
+{
+    int unit;
+    int track;
+    int first;
+    int sectors;
+    void *buffer;
+    int status; //inspect how status is applied
+    int result;
+
+    buffer = args_ptr->arg1;
+    sectors = (int) args_ptr->arg2;
+    track = (int) args_ptr->arg3;
+    first = (int) args_ptr->arg4;
+    unit = (int) args_ptr->arg5;
+    //check validity of arguments
+
+    result = disk_write_real(unit, track, first, sectors, buffer);
+    if (result == -1)
+    {
+        console("disk_write_first(): disk_write_real returned -1, illegal values.\n");
+    }
+    args_ptr->arg1 = (void *) status; //further inspection of status required, arg1 should be 0 or disk status register
+    args_ptr->arg4 = (void *) result;
+    return;
+} /* disk_write_first */
+
+
+
+/* disk_write_real */
+int 
+disk_write_real(int unit, int track, int first, int sectors, void *buffer)
+{
+    return 0;
+} /* disk_write_real */
+
+
+/* disk_size_first */
+static void 
+disk_size_first(sysargs *args_ptr)
+{
+    int unit;
+    int sector;
+    int track;
+    int disk;
+    int result;
+
+    unit = (int) args_ptr->arg1;
+    //check validity of unit
+
+    result = disk_size_real(unit, &sector, &track, &disk);
+    if (result == -1)
+    {
+        console("disk_size_first(): disk_size_real returned -1, illegal values\n");
+    }
+    args_ptr->arg1 = (void *) sector;
+    args_ptr->arg2 = (void *) track;
+    args_ptr->arg3 = (void *) disk;
+    args_ptr->arg4 = (void *) result;
+    return;
+} /* disk_size_first */
+
+
+/* disk_size_real */
+int 
+disk_size_real(int unit, int *sector, int *track, int *disk)
+{
+    return 0;
+} /* disk_size_real */
