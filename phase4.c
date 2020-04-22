@@ -123,7 +123,12 @@ start3(char *arg)
     join(&status); /* for the Clock Driver */
     for (i = 0; i < DISK_UNITS; i++) //Michael - I added this for loop to zap disk drivers
     {
-        zap(diskpids[i]);
+        /*
+         *Don’t zap disk drivers directly.  
+         *You could use start3 to indicate the intention to “zap” a disk driver.  
+         *If the disk driver “sees” the intention, it should quit.
+         */
+        //zap(diskpids[i]);
         join(&status);
     }
 
