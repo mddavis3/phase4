@@ -47,6 +47,8 @@ static int diskpids[DISK_UNITS];
 
 static int num_tracks[DISK_TRACKS]; //added to address DiskDriver references
 
+struct driver_proc dummy_proc = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+
 /* -------------------------- Functions ----------------------------------- */
 
 /* start3 */
@@ -59,8 +61,16 @@ start3(char *arg)
     int		clockPID;
     int		pid;
     int		status;
+    int     result;
+    int     index;
+    int     zap_sig = ZAP_SIGNAL;
 
     /* Check kernel mode here */
+    if ((psr_get() & PSR_CURRENT_MODE) == 0)
+    {
+        console("start3(): Not in kernel mode\n");
+        halt(1);
+    }
 
     /* Assignment system call handlers */
     sys_vec[SYS_SLEEP] = sleep_first;
@@ -69,6 +79,12 @@ start3(char *arg)
     sys_vec[SYS_DISKSIZE] = disk_size_first;
     
     /* Initialize the phase 4 process table */
+    for (int i = 0; i < MAXPROC; i++)
+    {
+        Driver_Table[i] = dummy_proc;
+        Driver_Table[i].start_mbox = Mbox_Create(0, MAX_MESSAGE, NULL);
+        Driver_Table[i].private_mbox = Mbox_Create(1, MAX_MESSAGE, NULL);
+    }
 
     /*
      * Create clock device driver 
@@ -127,12 +143,24 @@ start3(char *arg)
          *Don’t zap disk drivers directly.  
          *You could use start3 to indicate the intention to “zap” a disk driver.  
          *If the disk driver “sees” the intention, it should quit.
+         *Potentially add a mailbox for the disk drivers for this purpose
+         *Could send a message to them as the intent to zap
+         *Once they receive the message, they could quit
          */
         //zap(diskpids[i]);
+        //send ZAP_SIGNAL to disk mailboxes
+        index = diskpids[i] % MAXPROC;
+        result = Mbox_Send(Driver_Table[index].private_mbox, sizeof(int), &zap_sig);
         join(&status);
     }
 
-    quit(0); //is this necessary?
+    //redundancy
+    for (int i = 0; i < 3; i++)
+    {
+        quit(0);
+    }
+    quit(0); 
+    return 0;
 } /* start3 */
 
 

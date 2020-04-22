@@ -1,4 +1,5 @@
 #define DEBUG4 1
+#define ZAP_SIGNAL 1
 
 typedef struct driver_proc * driver_proc_ptr;
 
@@ -17,6 +18,8 @@ struct driver_proc {
    void *disk_buf;
 
    //more fields to add
+   int start_mbox;
+   int private_mbox;
 
 };
 
