@@ -45,9 +45,11 @@ static struct driver_proc Driver_Table[MAXPROC];
 
 static int diskpids[DISK_UNITS];
 
-static int num_tracks[DISK_TRACKS]; //added to address DiskDriver references
+static int num_tracks[DISK_UNITS]; //added to address DiskDriver references
 
 struct driver_proc dummy_proc = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+
+int ZAP_FLAG = 0;
 
 /* -------------------------- Functions ----------------------------------- */
 
@@ -149,8 +151,12 @@ start3(char *arg)
          */
         //zap(diskpids[i]);
         //send ZAP_SIGNAL to disk mailboxes
-        index = diskpids[i] % MAXPROC;
-        result = Mbox_Send(Driver_Table[index].private_mbox, sizeof(int), &zap_sig);
+
+        //can change global ZAP_FLAG to 1 to alert disk drivers to zap intention. easier than mailbox.
+        //ZAP_FLAG = 1;
+
+        //index = diskpids[i] % MAXPROC;
+        //result = Mbox_Send(Driver_Table[index].private_mbox, sizeof(int), &zap_sig);
         join(&status);
     }
 
@@ -191,7 +197,8 @@ ClockDriver(char *arg)
 	    */
     }
 
-    //check if zapped, potentially quit(0)
+    //once out of while loop, quit(0) for start3's join
+    quit(0);
 } /* ClockDriver */
 
 
@@ -215,7 +222,7 @@ DiskDriver(char *arg)
     my_request.opr  = DISK_TRACKS;
     my_request.reg1 = &num_tracks[unit];
 
-    //check if zapped, potentially quit(0)
+    //while loop (check if zapped). can check the ZAP_FLAG global int
 
     result = device_output(DISK_DEV, unit, &my_request);
 
@@ -226,7 +233,7 @@ DiskDriver(char *arg)
         halt(1);
     }
 
-    //check if zapped, potentially quit(0)
+    
 
     waitdevice(DISK_DEV, unit, &status);
     if (DEBUG4 && debugflag4)
@@ -234,10 +241,11 @@ DiskDriver(char *arg)
         console("DiskDriver(%d): tracks = %d\n", unit, num_tracks[unit]);
     }
 
-    //check if zapped, potentially quit(0)
+    //wake up user level process from private mbox/sem and give data
 
-    //more code 
-    return 0;
+    
+    //quit after giving user-level process the data
+    quit(0);
 } /* DiskDriver */
 
 
