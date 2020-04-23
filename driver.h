@@ -20,6 +20,8 @@ struct driver_proc {
    //more fields to add
    int start_mbox;
    int private_mbox;
+   int bedtime;
+   int private_sem;
 
 };
 

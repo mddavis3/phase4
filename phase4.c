@@ -35,6 +35,8 @@ static void disk_write_first(sysargs *);
 static void disk_size_first(sysargs *);
 //disk_size_real prototype in phase4.h
 
+int insert_sleep_q(driver_proc_ptr);
+
 /* -------------------------- Globals ------------------------------------- */
 
 static int debugflag4 = 0;
@@ -47,9 +49,15 @@ static int diskpids[DISK_UNITS];
 
 static int num_tracks[DISK_UNITS]; //added to address DiskDriver references
 
-struct driver_proc dummy_proc = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+struct driver_proc dummy_proc = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
 
 int ZAP_FLAG = 0;
+
+driver_proc_ptr SleepQ = NULL;
+
+int sleep_number = 0;
+
+static int sleep_semaphore;
 
 /* -------------------------- Functions ----------------------------------- */
 
@@ -86,6 +94,7 @@ start3(char *arg)
         Driver_Table[i] = dummy_proc;
         Driver_Table[i].start_mbox = Mbox_Create(0, MAX_MESSAGE, NULL);
         Driver_Table[i].private_mbox = Mbox_Create(1, MAX_MESSAGE, NULL);
+        Driver_Table[i].private_sem = semcreate_real(0);
     }
 
     /*
@@ -93,6 +102,7 @@ start3(char *arg)
      * I am assuming a semaphore here for coordination.  A mailbox can
      * be used instead -- your choice.
      */
+    sleep_semaphore = semcreate_real(1);
     running = semcreate_real(0);
     clockPID = fork1("Clock driver", ClockDriver, NULL, USLOSS_MIN_STACK, 2);
     if (clockPID < 0) 
@@ -139,7 +149,7 @@ start3(char *arg)
     /* Zap the device drivers */
     zap(clockPID);  // clock driver
     join(&status); /* for the Clock Driver */
-    for (i = 0; i < DISK_UNITS; i++) //Michael - I added this for loop to zap disk drivers
+    for (i = 0; i < DISK_UNITS; i++)
     {
         /*
          *Don’t zap disk drivers directly.  
@@ -149,14 +159,11 @@ start3(char *arg)
          *Could send a message to them as the intent to zap
          *Once they receive the message, they could quit
          */
-        //zap(diskpids[i]);
-        //send ZAP_SIGNAL to disk mailboxes
 
-        //can change global ZAP_FLAG to 1 to alert disk drivers to zap intention. easier than mailbox.
-        //ZAP_FLAG = 1;
+        //can change global ZAP_FLAG to 1 to alert disk drivers to zap intention.
+        ZAP_FLAG = 1;
 
-        //index = diskpids[i] % MAXPROC;
-        //result = Mbox_Send(Driver_Table[index].private_mbox, sizeof(int), &zap_sig);
+        //join will cause start3 to wait for disk driver to quit
         join(&status);
     }
 
@@ -195,6 +202,12 @@ ClockDriver(char *arg)
 	    * Compute the current time and wake up any processes
 	    * whose time has come.
 	    */
+        //check the SleepQ somehow (one at a time, or check the whole list?)
+        //compare the current sysclock time with the procs bedtime
+        //if result is >= wake_time, wake the process
+        //wake the process by doing a semv_real on the proc's private_sem
+        //also remove the proc from the SleepQ (need some function for this)
+        //also the SleepQ should be protected using sleep_semaphore
     }
 
     //once out of while loop, quit(0) for start3's join
@@ -211,6 +224,8 @@ DiskDriver(char *arg)
     int result;
     int status;
 
+    //somewhere do a semv_real(running);
+
     driver_proc_ptr current_req;
 
     if (DEBUG4 && debugflag4)
@@ -222,8 +237,6 @@ DiskDriver(char *arg)
     my_request.opr  = DISK_TRACKS;
     my_request.reg1 = &num_tracks[unit];
 
-    //while loop (check if zapped). can check the ZAP_FLAG global int
-
     result = device_output(DISK_DEV, unit, &my_request);
 
     if (result != DEV_OK) 
@@ -233,17 +246,19 @@ DiskDriver(char *arg)
         halt(1);
     }
 
-    
-
     waitdevice(DISK_DEV, unit, &status);
     if (DEBUG4 && debugflag4)
     {
         console("DiskDriver(%d): tracks = %d\n", unit, num_tracks[unit]);
     }
 
+    //while loop (check if zapped). can check the ZAP_FLAG global int
     //wake up user level process from private mbox/sem and give data
+    while (ZAP_FLAG != 1)
+    {
+        //do more stuff 
+    }
 
-    
     //quit after giving user-level process the data
     quit(0);
 } /* DiskDriver */
@@ -258,6 +273,7 @@ sleep_first(sysargs *args_ptr)
 
     seconds = (int) args_ptr->arg1;
     //check validity of seconds
+    //result = -1 if illegal argument
 
     result = sleep_real(seconds);
     if (result == -1)
@@ -274,6 +290,27 @@ sleep_first(sysargs *args_ptr)
 int 
 sleep_real(int seconds)
 {
+    //attempt to enter the critical region
+    semp_real(sleep_semaphore);
+
+    driver_proc_ptr current_proc;
+    current_proc = &Driver_Table[getpid() % MAXPROC];
+
+    //put process onto the sleep queue
+    sleep_number = insert_sleep_q(current_proc);
+
+    //record the time it was put to sleep
+    current_proc->bedtime = sys_clock();
+
+    //record amount of seconds to sleep as microseconds
+    current_proc->wake_time = seconds * 1000000;
+
+    //leave the critical region
+    semv_real(sleep_semaphore);
+
+    //block the process possibly with sem/mutex/mailboxreceive
+    semp_real(current_proc->private_sem);
+
     return 0;
 } /* sleep_real */
 
@@ -387,3 +424,35 @@ disk_size_real(int unit, int *sector, int *track, int *disk)
 {
     return 0;
 } /* disk_size_real */
+
+
+
+/* insert_sleep_q */
+int 
+insert_sleep_q(driver_proc_ptr proc_ptr)
+{
+    int num_sleep_procs = 0;
+    driver_proc_ptr walker, previous;
+    previous = NULL;
+    walker = SleepQ;
+    
+    if (walker == NULL) 
+    {
+        /* process goes at front of SleepQ */
+        SleepQ = proc_ptr;
+        num_sleep_procs++;
+    }
+    else 
+    {
+        num_sleep_procs++; //starts at 1
+        while (walker->next_ptr != NULL) //counts how many are in Q already
+        {
+            num_sleep_procs++;
+            walker = walker->next_ptr;
+        }
+        walker->next_ptr = proc_ptr; //inserts proc to end of Q
+        num_sleep_procs++; //counts the insert
+    }
+
+    return num_sleep_procs;
+} /* insert_sleep_q */
