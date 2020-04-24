@@ -36,6 +36,7 @@ static void disk_size_first(sysargs *);
 //disk_size_real prototype in phase4.h
 
 int insert_sleep_q(driver_proc_ptr);
+int remove_sleep_q(driver_proc_ptr);
 
 /* -------------------------- Globals ------------------------------------- */
 
@@ -184,8 +185,6 @@ ClockDriver(char *arg)
     int result;
     int status;
 
-    //check if zapped, potentially quit(0)
-    
     /*
      * Let the parent know we are running and enable interrupts.
      */
@@ -432,10 +431,13 @@ int
 insert_sleep_q(driver_proc_ptr proc_ptr)
 {
     int num_sleep_procs = 0;
-    driver_proc_ptr walker, previous;
-    previous = NULL;
+    driver_proc_ptr walker;
     walker = SleepQ;
     
+    //protect the SleepQ with a semaphore
+    //enter critical region
+    semp_real(sleep_semaphore);
+
     if (walker == NULL) 
     {
         /* process goes at front of SleepQ */
@@ -454,5 +456,41 @@ insert_sleep_q(driver_proc_ptr proc_ptr)
         num_sleep_procs++; //counts the insert
     }
 
+    //leave critical region
+    semv_real(sleep_semaphore);
+
     return num_sleep_procs;
 } /* insert_sleep_q */
+
+
+
+/* remove_sleep_q */
+int
+remove_sleep_q(driver_proc_ptr proc_ptr)
+{
+    int num_sleep_procs = sleep_number;
+    driver_proc_ptr walker, previous;
+    walker = SleepQ;
+
+    //protect the SleepQ with a semaphore
+    //enter critical region
+    semp_real(sleep_semaphore);
+
+    //if SleepQ is empty (num_sleep_procs == 0)
+    //some error message
+
+    //elseif SleepQ has one entry
+    //set SleepQ = NULL...
+    //num_sleep_procs--
+
+    //else SleepQ has > 1 entry
+    //check if walker = proc_ptr
+    //if not equal - set previous = walker and move walker to walker->next_ptr
+    //if equal - set previous->next_ptr = walker->next_ptr, set walker->next_ptr = NULL
+    //num_sleep_procs--
+
+    //leave critical region
+    semv_real(sleep_semaphore);
+
+    return num_sleep_procs;
+} /* remove_sleep_q */
