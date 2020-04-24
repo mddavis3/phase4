@@ -60,6 +60,8 @@ int sleep_number = 0;
 
 static int sleep_semaphore;
 
+static int disk_semaphore;
+
 /* -------------------------- Functions ----------------------------------- */
 
 /* start3 */
@@ -84,17 +86,25 @@ start3(char *arg)
     }
 
     /* Assignment system call handlers */
+    if (DEBUG4 && debugflag4)
+    {
+        console ("start3(): sys_vec assignment.\n");
+    }
     sys_vec[SYS_SLEEP] = sleep_first;
     sys_vec[SYS_DISKREAD] = disk_read_first;
     sys_vec[SYS_DISKWRITE] = disk_write_first;
     sys_vec[SYS_DISKSIZE] = disk_size_first;
     
     /* Initialize the phase 4 process table */
+    if (DEBUG4 && debugflag4)
+    {
+        console ("start3(): process table.\n");
+    }
     for (int i = 0; i < MAXPROC; i++)
     {
         Driver_Table[i] = dummy_proc;
-        Driver_Table[i].start_mbox = Mbox_Create(0, MAX_MESSAGE, NULL);
-        Driver_Table[i].private_mbox = Mbox_Create(1, MAX_MESSAGE, NULL);
+        //Driver_Table[i].start_mbox = Mbox_Create(0, MAX_MESSAGE, NULL);
+        //Driver_Table[i].private_mbox = Mbox_Create(1, MAX_MESSAGE, NULL);
         Driver_Table[i].private_sem = semcreate_real(0);
     }
 
@@ -103,8 +113,18 @@ start3(char *arg)
      * I am assuming a semaphore here for coordination.  A mailbox can
      * be used instead -- your choice.
      */
+    if (DEBUG4 && debugflag4)
+    {
+        console ("start3(): create semaphores.\n");
+    }
     sleep_semaphore = semcreate_real(1);
+    disk_semaphore = semcreate_real(0);
     running = semcreate_real(0);
+
+    if (DEBUG4 && debugflag4)
+    {
+        console ("start3(): fork clock driver.\n");
+    }
     clockPID = fork1("Clock driver", ClockDriver, NULL, USLOSS_MIN_STACK, 2);
     if (clockPID < 0) 
     {
@@ -116,6 +136,10 @@ start3(char *arg)
      * Wait for the clock driver to start. The idea is that ClockDriver
      * will V the semaphore "running" once it is running.
      */
+    if (DEBUG4 && debugflag4)
+    {
+        console ("start3(): semp on running sem.\n");
+    }
     semp_real(running);
 
     /*
@@ -123,6 +147,10 @@ start3(char *arg)
      * the stack size depending on the complexity of your
      * driver, and perhaps do something with the pid returned.
      */
+    if (DEBUG4 && debugflag4)
+    {
+        console ("start3(): fork drisk drivers.\n");
+    }
     for (i = 0; i < DISK_UNITS; i++) 
     {
         sprintf(termbuf, "%d", i); //Michael - I changed buf to termbuf, since termbuf is defined
@@ -134,6 +162,11 @@ start3(char *arg)
            halt(1);
         }
     }
+
+    if (DEBUG4 && debugflag4)
+    {
+        console ("start3(): semp on running sem x2.\n");
+    }
     semp_real(running);
     semp_real(running);
 
@@ -144,12 +177,25 @@ start3(char *arg)
      * I'm assuming kernel-mode versions of the system calls
      * with lower-case names.
      */
+    if (DEBUG4 && debugflag4)
+    {
+        console ("start3(): spawn start4 and wait on it.\n");
+    }
     pid = spawn_real("start4", start4, NULL,  8 * USLOSS_MIN_STACK, 3);
     pid = wait_real(&status);
 
     /* Zap the device drivers */
+    if (DEBUG4 && debugflag4)
+    {
+        console ("start3(): zap and join clock driver.\n");
+    }
     zap(clockPID);  // clock driver
     join(&status); /* for the Clock Driver */
+
+    if (DEBUG4 && debugflag4)
+    {
+        console ("start3(): 'zap' and join disk drivers\n");
+    }
     for (i = 0; i < DISK_UNITS; i++)
     {
         /*
@@ -165,6 +211,7 @@ start3(char *arg)
         ZAP_FLAG = 1;
 
         //join will cause start3 to wait for disk driver to quit
+        semv_real(disk_semaphore);
         join(&status);
     }
 
@@ -184,10 +231,16 @@ ClockDriver(char *arg)
 {
     int result;
     int status;
+    int current_time;
+    driver_proc_ptr proc_ptr, proc_to_wake;
 
     /*
      * Let the parent know we are running and enable interrupts.
      */
+    if (DEBUG4 && debugflag4)
+    {
+        console ("ClockDriver(): semv on running semaphore\n");
+    }
     semv_real(running);
     psr_set(psr_get() | PSR_CURRENT_INT);
     while(! is_zapped()) 
@@ -201,12 +254,32 @@ ClockDriver(char *arg)
 	    * Compute the current time and wake up any processes
 	    * whose time has come.
 	    */
-        //check the SleepQ somehow (one at a time, or check the whole list?)
-        //compare the current sysclock time with the procs bedtime
-        //if result is >= wake_time, wake the process
-        //wake the process by doing a semv_real on the proc's private_sem
-        //also remove the proc from the SleepQ (need some function for this)
-        //also the SleepQ should be protected using sleep_semaphore
+        current_time = sys_clock();
+        proc_ptr = SleepQ;
+
+        while (proc_ptr != NULL)
+        {
+            proc_to_wake = proc_ptr;
+            proc_ptr = proc_ptr->next_ptr;
+
+            //compare current time with procs wake_time
+            if (current_time >= proc_to_wake->wake_time)
+            {  
+                //remove the proc from the SleepQ 
+                if (DEBUG4 && debugflag4)
+                {
+                    console ("ClockDriver(): removing proc from SleepQ\n");
+                }
+                sleep_number = remove_sleep_q(proc_to_wake);
+
+                //wake the process
+                if (DEBUG4 && debugflag4)
+                {
+                    console ("ClockDriver(): waking proc\n");
+                }
+                semv_real(proc_to_wake->private_sem);    
+            } 
+        }
     }
 
     //once out of while loop, quit(0) for start3's join
@@ -223,7 +296,15 @@ DiskDriver(char *arg)
     int result;
     int status;
 
-    //somewhere do a semv_real(running);
+    /*
+     * Let the parent know we are running and enable interrupts.
+     */
+    if (DEBUG4 && debugflag4)
+    {
+        console ("DiskDriver(): semv on running semaphore\n");
+    }
+    semv_real(running);
+    psr_set(psr_get() | PSR_CURRENT_INT);
 
     driver_proc_ptr current_req;
 
@@ -233,6 +314,10 @@ DiskDriver(char *arg)
     }
 
     /* Get the number of tracks for this disk */
+    if (DEBUG4 && debugflag4)
+    {
+        console ("DiskDriver(): getting # of tracks for disk\n");
+    }
     my_request.opr  = DISK_TRACKS;
     my_request.reg1 = &num_tracks[unit];
 
@@ -251,11 +336,28 @@ DiskDriver(char *arg)
         console("DiskDriver(%d): tracks = %d\n", unit, num_tracks[unit]);
     }
 
-    //while loop (check if zapped). can check the ZAP_FLAG global int
+    
     //wake up user level process from private mbox/sem and give data
+    if (DEBUG4 && debugflag4)
+    {
+        console ("DiskDriver(): enter while loop till zapped\n");
+    }
     while (ZAP_FLAG != 1)
     {
-        //do more stuff 
+        //block on semaphore to await request from user process
+        if (DEBUG4 && debugflag4)
+        {
+            console ("DiskDriver(): semp on disk semaphore\n");
+        }
+        semp_real(disk_semaphore);
+
+        //take the next request on the DiskQ
+
+        //read/write loop to get data to/from disk
+            // 
+            //
+            //
+        //wake up user on private sem and give data
     }
 
     //quit after giving user-level process the data
@@ -271,13 +373,30 @@ sleep_first(sysargs *args_ptr)
     int result;
 
     seconds = (int) args_ptr->arg1;
+
     //check validity of seconds
     //result = -1 if illegal argument
+    if (seconds < 0)
+    {
+        result = -1;
+        console("sleep_first(): illegal value, seconds < 0.\n");
+        args_ptr->arg4 = (void *) result;
+        return;
+    }
 
+    if (DEBUG4 && debugflag4)
+    {
+        console ("sleep_first(): calling sleep_real\n");
+    }
     result = sleep_real(seconds);
     if (result == -1)
     {
-        console("sleep_first(): sleep_real returned -1, illegal values.\n");
+        console("sleep_first(): sleep_real returned -1, illegal value.\n");
+    }
+
+    if (DEBUG4 && debugflag4)
+    {
+        console ("sleep_first(): sleep_real returned\n");
     }
     args_ptr->arg4 = (void *) result;
 
@@ -290,24 +409,37 @@ int
 sleep_real(int seconds)
 {
     //attempt to enter the critical region
+    if (DEBUG4 && debugflag4)
+    {
+        console ("sleep_real(): call semp on sleep_sem\n");
+    }
     semp_real(sleep_semaphore);
 
     driver_proc_ptr current_proc;
     current_proc = &Driver_Table[getpid() % MAXPROC];
 
     //put process onto the sleep queue
+    if (DEBUG4 && debugflag4)
+    {
+        console ("sleep_real(): call insert_sleep_q\n");
+    }
     sleep_number = insert_sleep_q(current_proc);
 
     //record the time it was put to sleep
     current_proc->bedtime = sys_clock();
 
     //record amount of seconds to sleep as microseconds
-    current_proc->wake_time = seconds * 1000000;
+    //add bedtime to get the time to wake up
+    current_proc->wake_time = (seconds * 1000000) + current_proc->bedtime;
 
     //leave the critical region
     semv_real(sleep_semaphore);
 
     //block the process possibly with sem/mutex/mailboxreceive
+    if (DEBUG4 && debugflag4)
+    {
+        console ("sleep_real(): call semp on proc's private sem to block it\n");
+    }
     semp_real(current_proc->private_sem);
 
     return 0;
@@ -433,19 +565,23 @@ insert_sleep_q(driver_proc_ptr proc_ptr)
     int num_sleep_procs = 0;
     driver_proc_ptr walker;
     walker = SleepQ;
-    
-    //protect the SleepQ with a semaphore
-    //enter critical region
-    semp_real(sleep_semaphore);
 
     if (walker == NULL) 
     {
         /* process goes at front of SleepQ */
+        if (DEBUG4 && debugflag4)
+        {
+            console ("insert_sleep_q(): SleepQ was empty, now has 1 entry\n");
+        }
         SleepQ = proc_ptr;
         num_sleep_procs++;
     }
     else 
     {
+        if (DEBUG4 && debugflag4)
+        {
+            console ("insert_sleep_q():SleepQ wasn't empty, should have >1\n");
+        }
         num_sleep_procs++; //starts at 1
         while (walker->next_ptr != NULL) //counts how many are in Q already
         {
@@ -455,9 +591,6 @@ insert_sleep_q(driver_proc_ptr proc_ptr)
         walker->next_ptr = proc_ptr; //inserts proc to end of Q
         num_sleep_procs++; //counts the insert
     }
-
-    //leave critical region
-    semv_real(sleep_semaphore);
 
     return num_sleep_procs;
 } /* insert_sleep_q */
@@ -474,22 +607,61 @@ remove_sleep_q(driver_proc_ptr proc_ptr)
 
     //protect the SleepQ with a semaphore
     //enter critical region
+    if (DEBUG4 && debugflag4)
+    {
+        console ("remove_sleep_q(): semp on sleep_sem\n");
+    }
     semp_real(sleep_semaphore);
 
-    //if SleepQ is empty (num_sleep_procs == 0)
-    //some error message
-
+    //if SleepQ is empty
+    if(num_sleep_procs == 0)
+    {
+        console("remove_sleep_q(): SleepQ empty. Return.\n");
+    }
+    
     //elseif SleepQ has one entry
-    //set SleepQ = NULL...
-    //num_sleep_procs--
-
+    else if (num_sleep_procs == 1)
+    {
+        if (DEBUG4 && debugflag4)
+        {
+            console ("remove_sleep_q(): SleepQ had 1 entry, now 0\n");
+        }
+        SleepQ = NULL;
+        num_sleep_procs--;
+    }
+    
     //else SleepQ has > 1 entry
-    //check if walker = proc_ptr
-    //if not equal - set previous = walker and move walker to walker->next_ptr
-    //if equal - set previous->next_ptr = walker->next_ptr, set walker->next_ptr = NULL
-    //num_sleep_procs--
+    else
+    {
+        if (DEBUG4 && debugflag4)
+        {
+            console ("remove_sleep_q(): SleepQ had >1 entry\n");
+        }
+        if (SleepQ == proc_ptr) //1st entry to be removed
+        {
+            SleepQ = walker->next_ptr;
+            proc_ptr->next_ptr = NULL;
+            num_sleep_procs--;
+        }
+        else //2nd entry or later to be removed
+        {
+            while (walker != proc_ptr)
+            {
+                previous = walker;
+                walker = walker->next_ptr;
+            }
+            
+            previous->next_ptr = walker->next_ptr;
+            walker->next_ptr = NULL;
+            num_sleep_procs--;
+        }   
+    }
 
     //leave critical region
+    if (DEBUG4 && debugflag4)
+    {
+        console ("remove_sleep_q(): semv on sleep_sem\n");
+    }
     semv_real(sleep_semaphore);
 
     return num_sleep_procs;
