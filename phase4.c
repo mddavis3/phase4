@@ -553,6 +553,7 @@ disk_size_first(sysargs *args_ptr)
 int 
 disk_size_real(int unit, int *sector, int *track, int *disk)
 {
+
     return 0;
 } /* disk_size_real */
 
