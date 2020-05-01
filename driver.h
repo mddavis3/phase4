@@ -1,10 +1,13 @@
 #define DEBUG4 1
 #define ZAP_SIGNAL 1
+#define DISK_SIZE 4
 
 typedef struct driver_proc * driver_proc_ptr;
 
-struct driver_proc {
+struct driver_proc 
+{
    driver_proc_ptr next_ptr;
+   driver_proc_ptr next_dq_ptr;
 
    int   wake_time;    /* for sleep syscall */
    int   been_zapped;

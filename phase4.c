@@ -38,9 +38,12 @@ static void disk_size_first(sysargs *);
 int insert_sleep_q(driver_proc_ptr);
 int remove_sleep_q(driver_proc_ptr);
 
+int insert_disk_q(driver_proc_ptr);
+int remove_disk_q(driver_proc_ptr);
+
 /* -------------------------- Globals ------------------------------------- */
 
-static int debugflag4 = 0;
+static int debugflag4 = 1;
 
 static int running; /*semaphore to synchronize drivers and start3*/
 
@@ -50,7 +53,7 @@ static int diskpids[DISK_UNITS];
 
 static int num_tracks[DISK_UNITS]; //added to address DiskDriver references
 
-struct driver_proc dummy_proc = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+struct driver_proc dummy_proc = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
 
 int ZAP_FLAG = 0;
 
@@ -58,9 +61,15 @@ driver_proc_ptr SleepQ = NULL;
 
 int sleep_number = 0;
 
+driver_proc_ptr DQ = NULL;
+
+int DQ_number = 0;
+
 static int sleep_semaphore;
 
 static int disk_semaphore;
+
+static int DQ_semaphore;
 
 /* -------------------------- Functions ----------------------------------- */
 
@@ -103,8 +112,6 @@ start3(char *arg)
     for (int i = 0; i < MAXPROC; i++)
     {
         Driver_Table[i] = dummy_proc;
-        //Driver_Table[i].start_mbox = Mbox_Create(0, MAX_MESSAGE, NULL);
-        //Driver_Table[i].private_mbox = Mbox_Create(1, MAX_MESSAGE, NULL);
         Driver_Table[i].private_sem = semcreate_real(0);
     }
 
@@ -119,6 +126,7 @@ start3(char *arg)
     }
     sleep_semaphore = semcreate_real(1);
     disk_semaphore = semcreate_real(0);
+    DQ_semaphore = semcreate_real(1);
     running = semcreate_real(0);
 
     if (DEBUG4 && debugflag4)
@@ -336,7 +344,6 @@ DiskDriver(char *arg)
         console("DiskDriver(%d): tracks = %d\n", unit, num_tracks[unit]);
     }
 
-    
     //wake up user level process from private mbox/sem and give data
     if (DEBUG4 && debugflag4)
     {
@@ -352,12 +359,38 @@ DiskDriver(char *arg)
         semp_real(disk_semaphore);
 
         //take the next request on the DiskQ
+        current_req = DQ;
 
-        //read/write loop to get data to/from disk
+        //check if a disk_size request to skip read/write stuff
+        if (current_req->operation == DISK_SIZE)
+        {
+            //enter critical region
+            if (DEBUG4 && debugflag4)
+            {
+                console ("DiskDriver(): semp on dq_sem\n");
+            }
+            semp_real(DQ_semaphore);
+
+            DQ_number = remove_disk_q(current_req); //remove current_req from DQ
+            
+            //leave critical region
+            if (DEBUG4 && debugflag4)
+            {
+                console ("DiskDriver(): semv on DQ_sem\n");
+            }
+            semv_real(DQ_semaphore);
+
+            //wake up user on private sem
+            semv_real(current_req->private_sem);
+        }
+        else
+        {
+            //read/write loop to get data to/from disk
             // 
             //
             //
-        //wake up user on private sem and give data
+            //wake up user on private sem and give data
+        }
     }
 
     //quit after giving user-level process the data
@@ -535,8 +568,21 @@ disk_size_first(sysargs *args_ptr)
 
     unit = (int) args_ptr->arg1;
     //check validity of unit
+    if (unit < 0 || unit > 1)
+    {
+        result = -1;
+        console("disk_size_first(): illegal value, unit < 0 or > 1.\n");
+        args_ptr->arg4 = (void *) result;
+        return;
+    }
 
     result = disk_size_real(unit, &sector, &track, &disk);
+
+    if (DEBUG4 && debugflag4)
+    {
+        console ("disk_size_first(): after _real, sector = %d, track = %d, disk = %d\n", sector, track, disk);
+    }
+
     if (result == -1)
     {
         console("disk_size_first(): disk_size_real returned -1, illegal values\n");
@@ -553,6 +599,42 @@ disk_size_first(sysargs *args_ptr)
 int 
 disk_size_real(int unit, int *sector, int *track, int *disk)
 {
+
+    //attempt to enter the critical region
+    if (DEBUG4 && debugflag4)
+    {
+        console ("disk_size_real(): call semp on DQ_sem\n");
+    }
+    semp_real(DQ_semaphore);
+
+    driver_proc_ptr current_proc;
+    current_proc = &Driver_Table[getpid() % MAXPROC];
+    current_proc->operation = DISK_SIZE;
+    DQ_number = insert_disk_q(current_proc);
+
+    //leave the critical region
+    semv_real(DQ_semaphore);
+
+    //alert Disk Driver there's an entry in DQ
+    semv_real(disk_semaphore);
+
+    //wait for Disk Driver to complete operation
+    if (DEBUG4 && debugflag4)
+    {
+        console ("disk_size_real(): call semp on proc's private sem to block it\n");
+    }
+    semp_real(current_proc->private_sem);
+
+    //assign values and return
+    *sector = DISK_SECTOR_SIZE;
+    *track = DISK_TRACK_SIZE;
+    *disk = num_tracks[unit];
+
+    if (DEBUG4 && debugflag4)
+    {
+        console ("disk_size_real(): values after - sector = %d, track = %d, disk = %d\n", sector, track, disk);
+    }
+
     return 0;
 } /* disk_size_real */
 
@@ -666,3 +748,90 @@ remove_sleep_q(driver_proc_ptr proc_ptr)
 
     return num_sleep_procs;
 } /* remove_sleep_q */
+
+
+
+/* insert_disk_q */
+int 
+insert_disk_q(driver_proc_ptr proc_ptr)
+{
+    int num_disk_procs = 0;
+    driver_proc_ptr walker;
+    walker = DQ;
+
+    if (walker == NULL) 
+    {
+        /* process goes at front of DQ */
+        if (DEBUG4 && debugflag4)
+        {
+            console ("insert_disk_q(): DQ was empty, now has 1 entry\n");
+        }
+        DQ = proc_ptr;
+        num_disk_procs++;
+    }
+    else 
+    {
+        if (DEBUG4 && debugflag4)
+        {
+            console ("insert_disk_q():DQ wasn't empty, should have >1\n");
+        }
+        num_disk_procs++; //starts at 1
+        while (walker->next_dq_ptr != NULL) //counts how many are in Q already
+        {
+            num_disk_procs++;
+            walker = walker->next_dq_ptr;
+        }
+        walker->next_dq_ptr = proc_ptr; //inserts proc to end of Q
+        num_disk_procs++; //counts the insert
+    }
+
+    return num_disk_procs;
+} /* insert_disk_q */
+
+
+
+/* remove_disk_q */
+int 
+remove_disk_q(driver_proc_ptr proc_ptr)
+{
+    int num_disk_procs = DQ_number;
+    driver_proc_ptr walker, previous;
+    walker = DQ;
+
+    //if DQ is empty
+    if(num_disk_procs == 0)
+    {
+        console("remove_disk_q(): DQ empty. Return.\n");
+    }
+    
+    //elseif DQ has one entry
+    else if (num_disk_procs == 1)
+    {
+        if (DEBUG4 && debugflag4)
+        {
+            console ("remove_disk_q(): DQ had 1 entry, now 0\n");
+        }
+        DQ = NULL;
+        num_disk_procs--;
+    }
+    
+    //else DQ has > 1 entry
+    else
+    {
+        if (DEBUG4 && debugflag4)
+        {
+            console ("remove_disk_q(): DQ had >1 entry\n");
+        }
+        DQ = walker->next_dq_ptr;
+        proc_ptr->next_dq_ptr = NULL;
+        num_disk_procs--;
+    }
+
+    return num_disk_procs;
+} /* remove_disk_q */
+
+
+//notes: diskdriver 0 and 1 need to calculate num_tracks before disk_size call can function properly
+//somehow sync disk_size with diskDrivers so that diskDriver1 gets a chance to run
+//do we need a separate queue for disk drivers to access?
+//so each diskdriver has its own queue, based on the disk unit #?
