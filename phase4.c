@@ -644,16 +644,19 @@ disk_read_real(int unit, int track, int first, int sectors, void *buffer)
     //disk status register is grabbed using a call device_input(DISK_DEV, unit, &status)
     //output is stored in status
     //return status
-    if (current_proc->status == 0)
+    if (DEBUG4 && debugflag4)
     {
-        console("disk_read_real(): status returned as 0\n");
-    }
-    else
-    {
-        console("disk_read_real(): status returned as &d\n", current_proc->status);
+        if (current_proc->status == 0) 
+        {
+            console("disk_read_real(): status returned as 0\n");
+        }
+        else
+        {
+            console("disk_read_real(): status returned as &d\n", current_proc->status);
+        }
     }
     
-    return 0;
+    return current_proc->status;
 } /* disk_read_real */
 
 
@@ -735,15 +738,18 @@ disk_write_real(int unit, int track, int first, int sectors, void *buffer)
     //disk status register is grabbed using a call device input(DISK_DEV, unit,&status)
     //output is stored in status
     //return status
-    if (current_proc->status == 0)
+    if (DEBUG4 && debugflag4)
     {
-        console("disk_write_real(): status returned as 0\n");
+        if (current_proc->status == 0) 
+        {
+            console("disk_write_real(): status returned as 0\n");
+        }
+        else
+        {
+            console("disk_write_real(): status returned as &d\n", current_proc->status);
+        }
     }
-    else
-    {
-        console("disk_write_real(): status returned as &d\n", current_proc->status);
-    }
-    return 0;
+    return current_proc->status;
 } /* disk_write_real */
 
 
