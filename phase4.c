@@ -85,9 +85,6 @@ start3(char *arg)
     int		clockPID;
     int		pid;
     int		status;
-    int     result;
-    int     index;
-    int     zap_sig = ZAP_SIGNAL;
 
     /* Check kernel mode here */
     if ((psr_get() & PSR_CURRENT_MODE) == 0)
@@ -119,8 +116,6 @@ start3(char *arg)
 
     /*
      * Create clock device driver 
-     * I am assuming a semaphore here for coordination.  A mailbox can
-     * be used instead -- your choice.
      */
     if (DEBUG4 && debugflag4)
     {
@@ -640,9 +635,6 @@ disk_read_real(int unit, int track, int first, int sectors, void *buffer)
     }
     semp_real(current_proc->private_sem);
 
-    //return results - disk status register if transfer unsuccessful, 0 if successful
-    //disk status register is grabbed using a call device_input(DISK_DEV, unit, &status)
-    //output is stored in status
     //return status
     if (DEBUG4 && debugflag4)
     {
@@ -734,9 +726,6 @@ disk_write_real(int unit, int track, int first, int sectors, void *buffer)
     }
     semp_real(current_proc->private_sem);
 
-    //return results - disk status register if transfer unsuccessful, 0 if successful
-    //disk status register is grabbed using a call device input(DISK_DEV, unit,&status)
-    //output is stored in status
     //return status
     if (DEBUG4 && debugflag4)
     {
