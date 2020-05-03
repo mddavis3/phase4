@@ -41,6 +41,8 @@ int remove_sleep_q(driver_proc_ptr);
 int insert_disk_q(driver_proc_ptr);
 int remove_disk_q(driver_proc_ptr);
 
+void print_sems();
+
 /* -------------------------- Globals ------------------------------------- */
 
 static int debugflag4 = 0;
@@ -131,6 +133,7 @@ start3(char *arg)
 
     if (DEBUG4 && debugflag4)
     {
+        print_sems();
         console ("start3(): fork clock driver.\n");
     }
     clockPID = fork1("Clock driver", ClockDriver, NULL, USLOSS_MIN_STACK, 2);
@@ -175,8 +178,13 @@ start3(char *arg)
     {
         console ("start3(): semp on running sem x2.\n");
     }
-    semp_real(running);
-    semp_real(running);
+    semp_real(running);     //forces start3() to wait until first diskdriver is spawned and setup 
+    semp_real(running);     //forces start3() to wait until second diskdriver is spawned and setup
+
+if (DEBUG4 && debugflag4)
+    {
+        print_sems();   //print sems to see where they are
+    }
 
     /*
      * Create first user-level process and wait for it to finish.
@@ -223,6 +231,7 @@ start3(char *arg)
         {
             console ("start3(): semv disk_semaphore\n");
         }
+        print_sems();
         semv_real(disk_semaphore);
 
         if (DEBUG4 && debugflag4)
@@ -315,6 +324,7 @@ DiskDriver(char *arg)
     {
         console ("DiskDriver(%d): semv on running semaphore\n", unit);
     }
+
     semv_real(running);
     psr_set(psr_get() | PSR_CURRENT_INT);
 
@@ -379,7 +389,7 @@ DiskDriver(char *arg)
             console ("DiskDriver(%d): setting current_req = DQ\n", unit);
         }
         current_req = DQ;
-
+            
         //check if a disk_size request to skip read/write stuff
         if (DEBUG4 && debugflag4)
         {
@@ -500,6 +510,10 @@ sleep_real(int seconds)
     current_proc->wake_time = (seconds * 1000000) + current_proc->bedtime;
 
     //leave the critical region
+    if (DEBUG4 && debugflag4)
+    {
+        console ("sleep_real(): call semv on sleep_sem\n");
+    }
     semv_real(sleep_semaphore);
 
     //block the process possibly with sem/mutex/mailboxreceive
@@ -865,7 +879,11 @@ remove_disk_q(driver_proc_ptr proc_ptr)
 } /* remove_disk_q */
 
 
-//notes: diskdriver 0 and 1 need to calculate num_tracks before disk_size call can function properly
-//somehow sync disk_size with diskDrivers so that diskDriver1 gets a chance to run
-//do we need a separate queue for disk drivers to access?
-//so each diskdriver has its own queue, based on the disk unit #?
+/* print_sems */
+void 
+print_sems()
+{
+//for debug purposes.
+console("\nrunning semaphore: %d   disk_semaphore: %d   DQ_semaphore %d    sleep_semaphore: %d \n\n", running, disk_semaphore, DQ_semaphore, sleep_semaphore);
+return;
+} /* print_sems*/
