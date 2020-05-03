@@ -24,6 +24,7 @@ struct driver_proc
    //more fields to add
    int   bedtime;
    int   private_sem;
+   int   status;
 
 };
 

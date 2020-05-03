@@ -55,7 +55,7 @@ static int diskpids[DISK_UNITS];
 
 static int num_tracks[DISK_UNITS];
 
-struct driver_proc dummy_proc = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+struct driver_proc dummy_proc = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
 
 int ZAP_FLAG = 0;
 
@@ -415,15 +415,64 @@ DiskDriver(char *arg)
             }
             else
             {
+                //enter critical region
+                if (DEBUG4 && debugflag4)
+                {
+                    console ("DiskDriver(%d): semp on dq_sem to enter critical region\n", unit);
+                }
+                semp_real(DQ_semaphore);
+
+                DQ_number = remove_disk_q(current_req); //remove current_req from DQ
+
                 //read/write loop to get data to/from disk
                 //disk seek request to move arm to right track (unless we store arm position in global (int?) and know its there already)
                 //update track and sector #s if reading across track boundaries (code to do this in slides)
                 //
                 //wake up user on private sem and give data
+
+                //disk seek first to adjust arm 
+                my_request.opr  = DISK_SEEK;
+                my_request.reg1 = current_req->track_start;
+                result = device_output(DISK_DEV, current_req->unit, &my_request);
+
+                if (result != DEV_OK) 
+                {
+                    console("DiskDriver (%d): did not get DEV_OK on DISK_SEEK call\n", unit);
+                    console("DiskDriver (%d): is the file disk%d present???\n", unit, current_req->unit);
+                    halt(1);
+                }
+
+                waitdevice(DISK_DEV, current_req->unit, &status);
+
+                //do read/write op
+                my_request.opr = current_req->operation;
+                my_request.reg1 = current_req->sector_start;
+                my_request.reg2 = current_req->disk_buf;
+                result = device_output(DISK_DEV, current_req->unit, &my_request);
+
+                if (result != DEV_OK) 
+                {
+                    console("DiskDriver (%d): did not get DEV_OK on %d call\n", unit, current_req->operation);
+                    console("DiskDriver (%d): is the file disk%d present???\n", unit, current_req->unit);
+                    halt(1);
+                }
+
+                waitdevice(DISK_DEV, current_req->unit, &status);
+                current_req->status = status;
+
+                //leave critical region
                 if (DEBUG4 && debugflag4)
                 {
-                    console ("DiskDriver(%d): entered into else portion of while loop\n", unit);
+                    console ("DiskDriver(%d): semv on DQ_sem to leave critical region\n", unit);
                 }
+                semv_real(DQ_semaphore);
+
+                //wake up user on private sem
+                if (DEBUG4 && debugflag4)
+                {
+                    console ("DiskDriver(%d): semv on private_sem to unblock proc\n", unit);
+                }
+                semv_real(current_req->private_sem);
             }
         }    
     }
@@ -595,6 +644,15 @@ disk_read_real(int unit, int track, int first, int sectors, void *buffer)
     //disk status register is grabbed using a call device_input(DISK_DEV, unit, &status)
     //output is stored in status
     //return status
+    if (current_proc->status == 0)
+    {
+        console("disk_read_real(): status returned as 0\n");
+    }
+    else
+    {
+        console("disk_read_real(): status returned as &d\n", current_proc->status);
+    }
+    
     return 0;
 } /* disk_read_real */
 
@@ -677,6 +735,14 @@ disk_write_real(int unit, int track, int first, int sectors, void *buffer)
     //disk status register is grabbed using a call device input(DISK_DEV, unit,&status)
     //output is stored in status
     //return status
+    if (current_proc->status == 0)
+    {
+        console("disk_write_real(): status returned as 0\n");
+    }
+    else
+    {
+        console("disk_write_real(): status returned as &d\n", current_proc->status);
+    }
     return 0;
 } /* disk_write_real */
 
