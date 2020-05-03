@@ -221,8 +221,8 @@ start3(char *arg)
         if (DEBUG4 && debugflag4)
         {
             console ("start3(): semv disk_semaphore\n");
+            print_sems();
         }
-        print_sems();
         semv_real(disk_semaphore);
 
         if (DEBUG4 && debugflag4)
@@ -541,6 +541,7 @@ disk_read_first(sysargs *args_ptr)
     if (result == -1)
     {
         console("disk_read_first(): illegal values given, result == -1.\n");
+        //return
     }
 
     status = disk_read_real(unit, track, first, sectors, buffer);
@@ -591,8 +592,9 @@ disk_read_real(int unit, int track, int first, int sectors, void *buffer)
     semp_real(current_proc->private_sem);
 
     //return results - disk status register if transfer unsuccessful, 0 if successful
-    //disk status register is grabbed using a call device input(DISK_DEV, unit,&status)
+    //disk status register is grabbed using a call device_input(DISK_DEV, unit, &status)
     //output is stored in status
+    //return status
     return 0;
 } /* disk_read_real */
 
@@ -620,6 +622,7 @@ disk_write_first(sysargs *args_ptr)
     if (result == -1)
     {
         console("disk_write_first(): disk_write_real returned -1, illegal values.\n");
+        //return
     }
 
     status = disk_write_real(unit, track, first, sectors, buffer);
@@ -673,6 +676,7 @@ disk_write_real(int unit, int track, int first, int sectors, void *buffer)
     //return results - disk status register if transfer unsuccessful, 0 if successful
     //disk status register is grabbed using a call device input(DISK_DEV, unit,&status)
     //output is stored in status
+    //return status
     return 0;
 } /* disk_write_real */
 

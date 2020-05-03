@@ -8,7 +8,7 @@ Test cases for phase3
 (Quick Summary)
 P Testcase 00
 P Testcase 01
-_ Testcase 02
+P Testcase 02
 _ Testcase 03
 _ Testcase 04
 _ Testcase 05
@@ -104,6 +104,13 @@ start4(): Wait returned 0, pid:9, status 10
 All processes completed.
 
 starting test 02 ....
+
+start4(): started
+start4(): unit 0, sector size 512, track size 16, disk size 16
+start4(): unit 1, sector size 512, track size 16, disk size 32
+start4(): calling Terminate
+All processes completed.
+
 starting test 03 ....
 starting test 04 ....
 starting test 05 ....
