@@ -15,16 +15,15 @@ struct driver_proc
 
    /* Used for disk requests */
    int   operation;    /* DISK_READ, DISK_WRITE, DISK_SEEK, DISK_TRACKS */
+   int   unit;
    int   track_start;
    int   sector_start;
    int   num_sectors;
-   void *disk_buf;
+   void  *disk_buf;
 
    //more fields to add
-   int start_mbox;
-   int private_mbox;
-   int bedtime;
-   int private_sem;
+   int   bedtime;
+   int   private_sem;
 
 };
 

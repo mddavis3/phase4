@@ -41,7 +41,7 @@ int remove_sleep_q(driver_proc_ptr);
 int insert_disk_q(driver_proc_ptr);
 int remove_disk_q(driver_proc_ptr);
 
-void print_sems();
+void print_sems(void);
 
 /* -------------------------- Globals ------------------------------------- */
 
@@ -53,9 +53,9 @@ static struct driver_proc Driver_Table[MAXPROC];
 
 static int diskpids[DISK_UNITS];
 
-static int num_tracks[DISK_UNITS]; //added to address DiskDriver references
+static int num_tracks[DISK_UNITS];
 
-struct driver_proc dummy_proc = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+struct driver_proc dummy_proc = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
 
 int ZAP_FLAG = 0;
 
@@ -164,9 +164,9 @@ start3(char *arg)
     }
     for (i = 0; i < DISK_UNITS; i++) 
     {
-        sprintf(termbuf, "%d", i); //Michael - I changed buf to termbuf, since termbuf is defined
+        sprintf(termbuf, "%d", i); 
         sprintf(name, "DiskDriver%d", i);
-        diskpids[i] = fork1(name, DiskDriver, termbuf, USLOSS_MIN_STACK, 2); //Michael - ^^ same here
+        diskpids[i] = fork1(name, DiskDriver, termbuf, USLOSS_MIN_STACK, 2);
         if (diskpids[i] < 0) 
         {
            console("start3(): Can't create disk driver %d\n", i);
@@ -181,7 +181,7 @@ start3(char *arg)
     semp_real(running);     //forces start3() to wait until first diskdriver is spawned and setup 
     semp_real(running);     //forces start3() to wait until second diskdriver is spawned and setup
 
-if (DEBUG4 && debugflag4)
+    if (DEBUG4 && debugflag4)
     {
         print_sems();   //print sems to see where they are
     }
@@ -214,16 +214,7 @@ if (DEBUG4 && debugflag4)
     }
     for (i = 0; i < DISK_UNITS; i++)
     {
-        /*
-         *Don’t zap disk drivers directly.  
-         *You could use start3 to indicate the intention to “zap” a disk driver.  
-         *If the disk driver “sees” the intention, it should quit.
-         *Potentially add a mailbox for the disk drivers for this purpose
-         *Could send a message to them as the intent to zap
-         *Once they receive the message, they could quit
-         */
-
-        //can change global ZAP_FLAG to 1 to alert disk drivers to zap intention.
+        //alert disk drivers to zap intention.
         ZAP_FLAG = 1;
 
         //join will cause start3 to wait for disk driver to quit
@@ -390,13 +381,13 @@ DiskDriver(char *arg)
         }
         current_req = DQ;
             
-        //check if a disk_size request to skip read/write stuff
-        if (DEBUG4 && debugflag4)
-        {
-            console ("DiskDriver(%d): checking current_req operation type\n", unit);
-        }
         if (current_req != NULL) //make sure current_req is not NULL to avoid segmentation fault
         {
+            //check if a disk_size request to skip read/write stuff
+            if (DEBUG4 && debugflag4)
+            {
+                console ("DiskDriver(%d): checking current_req operation type\n", unit);
+            }
             if (current_req->operation == DISK_SIZE)
             {
                 //enter critical region
@@ -425,8 +416,8 @@ DiskDriver(char *arg)
             else
             {
                 //read/write loop to get data to/from disk
-                // 
-                //
+                //disk seek request to move arm to right track (unless we store arm position in global (int?) and know its there already)
+                //update track and sector #s if reading across track boundaries (code to do this in slides)
                 //
                 //wake up user on private sem and give data
                 if (DEBUG4 && debugflag4)
@@ -536,22 +527,25 @@ disk_read_first(sysargs *args_ptr)
     int first;
     int sectors;
     void *buffer;
-    int status; //inspect how status is applied
-    int result;
+    int status;
+    int result = 0;
 
     buffer = args_ptr->arg1;
     sectors = (int) args_ptr->arg2;
     track = (int) args_ptr->arg3;
     first = (int) args_ptr->arg4;
     unit = (int) args_ptr->arg5;
+
     //check validity of arguments
 
-    result = disk_read_real(unit, track, first, sectors, buffer);
     if (result == -1)
     {
-        console("disk_read_first(): disk_read_real returned -1, illegal values.\n");
+        console("disk_read_first(): illegal values given, result == -1.\n");
     }
-    args_ptr->arg1 = (void *) status; //further inspection of status required, arg1 should be 0 or disk status register
+
+    status = disk_read_real(unit, track, first, sectors, buffer);
+    
+    args_ptr->arg1 = (void *) status;
     args_ptr->arg4 = (void *) result;
     return;
 } /* disk_read_first */
@@ -561,6 +555,44 @@ disk_read_first(sysargs *args_ptr)
 int 
 disk_read_real(int unit, int track, int first, int sectors, void *buffer)
 {
+    //attempt to enter the critical region
+    if (DEBUG4 && debugflag4)
+    {
+        console ("disk_read_real(): call semp on DQ_sem\n");
+    }
+    semp_real(DQ_semaphore);
+
+    //initialize current_proc
+    driver_proc_ptr current_proc;
+    current_proc = &Driver_Table[getpid() % MAXPROC];
+
+    //pack the request
+    current_proc->operation = DISK_READ;
+    current_proc->unit = unit; //which disk to read
+    current_proc->track_start = track; //starting track
+    current_proc->sector_start = first; //starting sector
+    current_proc->num_sectors = sectors; //number of sectors
+    current_proc->disk_buf = buffer; //data buffer
+
+    //put request on the DQ
+    DQ_number = insert_disk_q(current_proc);
+
+    //leave the critical region
+    semv_real(DQ_semaphore);
+
+    //alert Disk Driver there's an entry in DQ
+    semv_real(disk_semaphore);
+
+    //wait for Disk Driver to complete operation
+    if (DEBUG4 && debugflag4)
+    {
+        console ("disk_read_real(): call semp on proc's private sem to block it\n");
+    }
+    semp_real(current_proc->private_sem);
+
+    //return results - disk status register if transfer unsuccessful, 0 if successful
+    //disk status register is grabbed using a call device input(DISK_DEV, unit,&status)
+    //output is stored in status
     return 0;
 } /* disk_read_real */
 
@@ -574,22 +606,25 @@ disk_write_first(sysargs *args_ptr)
     int first;
     int sectors;
     void *buffer;
-    int status; //inspect how status is applied
-    int result;
+    int status; 
+    int result = 0;
 
     buffer = args_ptr->arg1;
     sectors = (int) args_ptr->arg2;
     track = (int) args_ptr->arg3;
     first = (int) args_ptr->arg4;
     unit = (int) args_ptr->arg5;
+
     //check validity of arguments
 
-    result = disk_write_real(unit, track, first, sectors, buffer);
     if (result == -1)
     {
         console("disk_write_first(): disk_write_real returned -1, illegal values.\n");
     }
-    args_ptr->arg1 = (void *) status; //further inspection of status required, arg1 should be 0 or disk status register
+
+    status = disk_write_real(unit, track, first, sectors, buffer);
+    
+    args_ptr->arg1 = (void *) status; 
     args_ptr->arg4 = (void *) result;
     return;
 } /* disk_write_first */
@@ -600,6 +635,44 @@ disk_write_first(sysargs *args_ptr)
 int 
 disk_write_real(int unit, int track, int first, int sectors, void *buffer)
 {
+    //attempt to enter the critical region
+    if (DEBUG4 && debugflag4)
+    {
+        console ("disk_write_real(): call semp on DQ_sem\n");
+    }
+    semp_real(DQ_semaphore);
+
+    //initialize current_proc
+    driver_proc_ptr current_proc;
+    current_proc = &Driver_Table[getpid() % MAXPROC];
+
+    //pack the request
+    current_proc->operation = DISK_WRITE;
+    current_proc->unit = unit; //which disk to write to
+    current_proc->track_start = track; //starting track
+    current_proc->sector_start = first; //starting sector
+    current_proc->num_sectors = sectors; //number of sectors
+    current_proc->disk_buf = buffer; //data buffer
+
+    //put request on the DQ
+    DQ_number = insert_disk_q(current_proc);
+
+    //leave the critical region
+    semv_real(DQ_semaphore);
+
+    //alert Disk Driver there's an entry in DQ
+    semv_real(disk_semaphore);
+
+    //wait for Disk Driver to complete operation
+    if (DEBUG4 && debugflag4)
+    {
+        console ("disk_write_real(): call semp on proc's private sem to block it\n");
+    }
+    semp_real(current_proc->private_sem);
+
+    //return results - disk status register if transfer unsuccessful, 0 if successful
+    //disk status register is grabbed using a call device input(DISK_DEV, unit,&status)
+    //output is stored in status
     return 0;
 } /* disk_write_real */
 
@@ -881,9 +954,9 @@ remove_disk_q(driver_proc_ptr proc_ptr)
 
 /* print_sems */
 void 
-print_sems()
+print_sems(void)
 {
-//for debug purposes.
-console("\nrunning semaphore: %d   disk_semaphore: %d   DQ_semaphore %d    sleep_semaphore: %d \n\n", running, disk_semaphore, DQ_semaphore, sleep_semaphore);
-return;
+    //for debug purposes.
+    console("\nrunning semaphore: %d, disk_semaphore: %d, DQ_semaphore %d, sleep_semaphore: %d\n\n", running, disk_semaphore, DQ_semaphore, sleep_semaphore);
+    return;
 } /* print_sems*/
