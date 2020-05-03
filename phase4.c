@@ -43,7 +43,7 @@ int remove_disk_q(driver_proc_ptr);
 
 /* -------------------------- Globals ------------------------------------- */
 
-static int debugflag4 = 1;
+static int debugflag4 = 0;
 
 static int running; /*semaphore to synchronize drivers and start3*/
 
@@ -219,15 +219,19 @@ start3(char *arg)
         ZAP_FLAG = 1;
 
         //join will cause start3 to wait for disk driver to quit
+        if (DEBUG4 && debugflag4)
+        {
+            console ("start3(): semv disk_semaphore\n");
+        }
         semv_real(disk_semaphore);
+
+        if (DEBUG4 && debugflag4)
+        {
+            console ("start3(): join\n");
+        }
         join(&status);
     }
 
-    //redundancy
-    for (int i = 0; i < 3; i++)
-    {
-        quit(0);
-    }
     quit(0); 
     return 0;
 } /* start3 */
@@ -309,7 +313,7 @@ DiskDriver(char *arg)
      */
     if (DEBUG4 && debugflag4)
     {
-        console ("DiskDriver(): semv on running semaphore\n");
+        console ("DiskDriver(%d): semv on running semaphore\n", unit);
     }
     semv_real(running);
     psr_set(psr_get() | PSR_CURRENT_INT);
@@ -324,7 +328,7 @@ DiskDriver(char *arg)
     /* Get the number of tracks for this disk */
     if (DEBUG4 && debugflag4)
     {
-        console ("DiskDriver(): getting # of tracks for disk\n");
+        console ("DiskDriver(%d): getting # of tracks for disk\n", unit);
     }
     my_request.opr  = DISK_TRACKS;
     my_request.reg1 = &num_tracks[unit];
@@ -344,53 +348,83 @@ DiskDriver(char *arg)
         console("DiskDriver(%d): tracks = %d\n", unit, num_tracks[unit]);
     }
 
-    //wake up user level process from private mbox/sem and give data
+    //allow DiskDriver(1) to finish getting # of tracks
+    if (unit == 0)
+    {
+        //down on running semaphore
+        semp_real(running);
+    }
+    else
+    {
+        //up on running semaphore
+        semv_real(running);
+    }
+    
     if (DEBUG4 && debugflag4)
     {
-        console ("DiskDriver(): enter while loop till zapped\n");
+        console ("DiskDriver(%d): enter while loop till zapped\n", unit);
     }
     while (ZAP_FLAG != 1)
     {
         //block on semaphore to await request from user process
         if (DEBUG4 && debugflag4)
         {
-            console ("DiskDriver(): semp on disk semaphore\n");
+            console ("DiskDriver(%d): semp on disk semaphore to wait for requests\n", unit);
         }
         semp_real(disk_semaphore);
 
         //take the next request on the DiskQ
+        if (DEBUG4 && debugflag4)
+        {
+            console ("DiskDriver(%d): setting current_req = DQ\n", unit);
+        }
         current_req = DQ;
 
         //check if a disk_size request to skip read/write stuff
-        if (current_req->operation == DISK_SIZE)
+        if (DEBUG4 && debugflag4)
         {
-            //enter critical region
-            if (DEBUG4 && debugflag4)
+            console ("DiskDriver(%d): checking current_req operation type\n", unit);
+        }
+        if (current_req != NULL) //make sure current_req is not NULL to avoid segmentation fault
+        {
+            if (current_req->operation == DISK_SIZE)
             {
-                console ("DiskDriver(): semp on dq_sem\n");
-            }
-            semp_real(DQ_semaphore);
+                //enter critical region
+                if (DEBUG4 && debugflag4)
+                {
+                    console ("DiskDriver(%d): semp on dq_sem to enter critical region\n", unit);
+                }
+                semp_real(DQ_semaphore);
 
-            DQ_number = remove_disk_q(current_req); //remove current_req from DQ
+                DQ_number = remove_disk_q(current_req); //remove current_req from DQ
             
-            //leave critical region
-            if (DEBUG4 && debugflag4)
-            {
-                console ("DiskDriver(): semv on DQ_sem\n");
-            }
-            semv_real(DQ_semaphore);
+                //leave critical region
+                if (DEBUG4 && debugflag4)
+                {
+                    console ("DiskDriver(%d): semv on DQ_sem to leave critical region\n", unit);
+                }
+                semv_real(DQ_semaphore);
 
-            //wake up user on private sem
-            semv_real(current_req->private_sem);
-        }
-        else
-        {
-            //read/write loop to get data to/from disk
-            // 
-            //
-            //
-            //wake up user on private sem and give data
-        }
+                //wake up user on private sem
+                if (DEBUG4 && debugflag4)
+                {
+                    console ("DiskDriver(%d): semv on private_sem to unblock proc\n", unit);
+                }
+                semv_real(current_req->private_sem);
+            }
+            else
+            {
+                //read/write loop to get data to/from disk
+                // 
+                //
+                //
+                //wake up user on private sem and give data
+                if (DEBUG4 && debugflag4)
+                {
+                    console ("DiskDriver(%d): entered into else portion of while loop\n", unit);
+                }
+            }
+        }    
     }
 
     //quit after giving user-level process the data
@@ -632,7 +666,7 @@ disk_size_real(int unit, int *sector, int *track, int *disk)
 
     if (DEBUG4 && debugflag4)
     {
-        console ("disk_size_real(): values after - sector = %d, track = %d, disk = %d\n", sector, track, disk);
+        console ("disk_size_real(): values after - sector = %d, track = %d, disk = %d\n", *sector, *track, *disk);
     }
 
     return 0;
