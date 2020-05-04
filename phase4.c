@@ -581,11 +581,30 @@ disk_read_first(sysargs *args_ptr)
     unit = (int) args_ptr->arg5;
 
     //check validity of arguments
+    if (unit < 0 || unit > 1) //disk unit #
+    {
+        result = -1;
+    }
+    if (sectors < 0) //# of sectors to read
+    {
+        result = -1;
+    }
+    if (track < 0) //starting track #
+    {
+        result = -1;
+    }
+    if (first < 0) //starting sector #
+    {
+        result = -1;
+    }
+
+    //what kind of validity check for the buffer?
 
     if (result == -1)
     {
         console("disk_read_first(): illegal values given, result == -1.\n");
-        //return
+        args_ptr->arg4 = (void *) result;
+        return;
     }
 
     status = disk_read_real(unit, track, first, sectors, buffer);
@@ -671,11 +690,30 @@ disk_write_first(sysargs *args_ptr)
     unit = (int) args_ptr->arg5;
 
     //check validity of arguments
+    if (unit < 0 || unit > 1) //disk unit #
+    {
+        result = -1;
+    }
+    if (sectors < 0) //# of sectors to read
+    {
+        result = -1;
+    }
+    if (track < 0) //starting track #
+    {
+        result = -1;
+    }
+    if (first < 0) //starting sector #
+    {
+        result = -1;
+    }
 
+    //what kind of validity check for the buffer?
+    
     if (result == -1)
     {
-        console("disk_write_first(): disk_write_real returned -1, illegal values.\n");
-        //return
+        console("disk_write_first(): result == -1, illegal values.\n");
+        args_ptr->arg4 = (void *) result;
+        return;
     }
 
     status = disk_write_real(unit, track, first, sectors, buffer);
