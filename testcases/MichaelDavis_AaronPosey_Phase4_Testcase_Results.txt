@@ -10,23 +10,18 @@ P Testcase 00
 P Testcase 01
 P Testcase 02
 P Testcase 03
-_ Testcase 04
-_ Testcase 05
-_ Testcase 06
+P Testcase 04
+P Testcase 05
+P Testcase 06
 _ Testcase 07
-_ Testcase 08
+P Testcase 08
 _ Testcase 09
 _ Testcase 10
 _ Testcase 11 
 _ Testcase 12
-_ Testcase 13
-_ Testcase 22
-_ Testcase 23 
-_ Testcase 24 
-_ Testcase 25 
 
 
-Test cases passed 00/18
+Test cases passed 00/13
 
 
 Our Output:
@@ -128,10 +123,63 @@ start4(): calling Terminate
 All processes completed.
 
 starting test 04 ....
+
+start4(): Testing disk 0
+start4(): Read from disk: This is a test
+
+start4(): Read from disk: Does it work?
+
+start4(): Read from disk: One last chance
+
+start4(): Testing disk 1
+start4(): Read from disk: This is a test
+
+start4(): Read from disk: Does it work?
+
+start4(): Read from disk: One last chance
+
+start4(): Terminating
+All processes completed.
+
 starting test 05 ....
+
+start4(): Writing data to 3 disk sectors, then reading them back
+          Confirm that data read back matches data read in
+start4(): Testing Disk 0
+start4(): Test of disk 0 succeeded.
+start4(): Testing Disk 1
+start4(): Test of disk 1 succeeded.
+start4(): Done.
+All processes completed.
+
 starting test 06 ....
+
+start4(): Writing data to 3 disk sectors, wrapping to next track
+
+start4(): Disk 0:
+start4(): Read from disk: This is a test
+
+start4(): Read from disk: Does it work?
+
+start4(): Read from disk: One last chance
+
+
+start4(): Disk 1:
+start4(): Read from disk: This is a test
+
+start4(): Read from disk: Does it work?
+
+start4(): Read from disk: One last chance
+
+All processes completed.
+
 starting test 07 ....
 starting test 08 ....
+
+start4(): Attempt to write to a non-existant disk, disk 3
+start4(): done
+All processes completed.
+
 starting test 09 ....
 starting test 10 ....
 starting test 11 ....

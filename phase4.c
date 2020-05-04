@@ -302,6 +302,9 @@ DiskDriver(char *arg)
     device_request my_request;
     int result;
     int status;
+    int counter;
+    int current_track;
+    int current_sector;
 
     /*
      * Let the parent know we are running and enable interrupts.
@@ -419,13 +422,7 @@ DiskDriver(char *arg)
 
                 DQ_number = remove_disk_q(current_req); //remove current_req from DQ
 
-                //read/write loop to get data to/from disk
-                //disk seek request to move arm to right track (unless we store arm position in global (int?) and know its there already)
-                //update track and sector #s if reading across track boundaries (code to do this in slides)
-                //
-                //wake up user on private sem and give data
-
-                //disk seek first to adjust arm 
+                //disk seek first to adjust arm
                 my_request.opr  = DISK_SEEK;
                 my_request.reg1 = current_req->track_start;
                 result = device_output(DISK_DEV, current_req->unit, &my_request);
@@ -439,7 +436,60 @@ DiskDriver(char *arg)
 
                 waitdevice(DISK_DEV, current_req->unit, &status);
 
+                //initialize variables used in read/write loop
+                current_track = current_req->track_start; 
+                current_sector = current_req->sector_start; 
+                counter = 0; 
+
                 //do read/write op
+                while (counter != current_req->num_sectors)
+                {
+                    //disk read/write
+                    my_request.opr = current_req->operation;
+                    my_request.reg1 = current_sector;
+                    my_request.reg2 = &current_req->disk_buf[counter * DISK_SECTOR_SIZE];
+                    result = device_output(DISK_DEV, current_req->unit, &my_request);
+
+                    if (result != DEV_OK) 
+                    {
+                        console("DiskDriver (%d): did not get DEV_OK on %d call\n", unit, current_req->operation);
+                        console("DiskDriver (%d): is the file disk%d present???\n", unit, current_req->unit);
+                        halt(1);
+                    }
+
+                    waitdevice(DISK_DEV, current_req->unit, &status);
+                    current_req->status = status;
+
+                    //increment counter and check if we're done reading/writing
+                    counter++;
+                    if (counter != current_req->num_sectors)
+                    {
+                        //update sector
+                        current_sector++;
+
+                        //check if sector is out of bounds, update track/sector and disk seek
+                        if (current_sector >= DISK_TRACK_SIZE) 
+                        {
+                            current_track = (current_track + 1) % num_tracks[unit];
+                            current_sector = 0;
+
+                            my_request.opr  = DISK_SEEK;
+                            my_request.reg1 = current_track;
+                            result = device_output(DISK_DEV, current_req->unit, &my_request);
+
+                            if (result != DEV_OK) 
+                            {
+                                console("DiskDriver (%d): did not get DEV_OK on DISK_SEEK call\n", unit);
+                                console("DiskDriver (%d): is the file disk%d present???\n", unit, current_req->unit);
+                                halt(1);
+                            }
+
+                            waitdevice(DISK_DEV, current_req->unit, &status);
+                        }
+                    }
+                }
+
+                /*
                 my_request.opr = current_req->operation;
                 my_request.reg1 = current_req->sector_start;
                 my_request.reg2 = current_req->disk_buf;
@@ -454,6 +504,7 @@ DiskDriver(char *arg)
 
                 waitdevice(DISK_DEV, current_req->unit, &status);
                 current_req->status = status;
+                */
 
                 //leave critical region
                 if (DEBUG4 && debugflag4)
@@ -602,7 +653,10 @@ disk_read_first(sysargs *args_ptr)
 
     if (result == -1)
     {
-        console("disk_read_first(): illegal values given, result == -1.\n");
+        if (DEBUG4 && debugflag4)
+        {
+            console("disk_read_first(): illegal values given, result == -1.\n");
+        }
         args_ptr->arg4 = (void *) result;
         return;
     }
@@ -698,20 +752,24 @@ disk_write_first(sysargs *args_ptr)
     {
         result = -1;
     }
-    if (track < 0) //starting track #
+    if (track < 0 || track >= num_tracks[unit]) //starting track #
     {
         result = -1;
     }
-    if (first < 0) //starting sector #
+    if (first < 0 || sectors > 15) //starting sector #
     {
         result = -1;
     }
 
     //what kind of validity check for the buffer?
-    
+
     if (result == -1)
     {
-        console("disk_write_first(): result == -1, illegal values.\n");
+        if (DEBUG4 && debugflag4)
+        {
+            console("disk_write_first(): result == -1, illegal values.\n");
+        }
+        args_ptr->arg1 = (void *) result;
         args_ptr->arg4 = (void *) result;
         return;
     }
