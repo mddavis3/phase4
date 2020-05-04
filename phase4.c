@@ -314,7 +314,7 @@ DiskDriver(char *arg)
         console ("DiskDriver(%d): semv on running semaphore\n", unit);
     }
 
-    semv_real(running);
+    //semv_real(running);
     psr_set(psr_get() | PSR_CURRENT_INT);
 
     driver_proc_ptr current_req;
@@ -347,7 +347,11 @@ DiskDriver(char *arg)
         console("DiskDriver(%d): tracks = %d\n", unit, num_tracks[unit]);
     }
 
+    //let start3 know that driver is running
+    semv_real(running);
+
     //allow DiskDriver(1) to finish getting # of tracks
+    /*
     if (unit == 0)
     {
         //down on running semaphore
@@ -358,6 +362,7 @@ DiskDriver(char *arg)
         //up on running semaphore
         semv_real(running);
     }
+    */
     
     if (DEBUG4 && debugflag4)
     {
@@ -640,11 +645,11 @@ disk_read_first(sysargs *args_ptr)
     {
         result = -1;
     }
-    if (track < 0) //starting track #
+    if (track < 0 || track >= num_tracks[unit]) //starting track #
     {
         result = -1;
     }
-    if (first < 0) //starting sector #
+    if (first < 0 || first > 15) //starting sector #
     {
         result = -1;
     }
@@ -657,6 +662,7 @@ disk_read_first(sysargs *args_ptr)
         {
             console("disk_read_first(): illegal values given, result == -1.\n");
         }
+        args_ptr->arg1 = (void *) result;
         args_ptr->arg4 = (void *) result;
         return;
     }
@@ -736,6 +742,7 @@ disk_write_first(sysargs *args_ptr)
     void *buffer;
     int status; 
     int result = 0;
+    int flag;
 
     buffer = args_ptr->arg1;
     sectors = (int) args_ptr->arg2;
@@ -747,18 +754,22 @@ disk_write_first(sysargs *args_ptr)
     if (unit < 0 || unit > 1) //disk unit #
     {
         result = -1;
+        flag = 0;
     }
     if (sectors < 0) //# of sectors to read
     {
         result = -1;
+        flag = 1;
     }
     if (track < 0 || track >= num_tracks[unit]) //starting track #
     {
         result = -1;
+        flag = 2;
     }
-    if (first < 0 || sectors > 15) //starting sector #
+    if (first < 0 || first > 15) //starting sector #
     {
         result = -1;
+        flag = 3;
     }
 
     //what kind of validity check for the buffer?
@@ -768,6 +779,7 @@ disk_write_first(sysargs *args_ptr)
         if (DEBUG4 && debugflag4)
         {
             console("disk_write_first(): result == -1, illegal values.\n");
+            console("disk_write_first(): illegal value is %d.\n", flag);
         }
         args_ptr->arg1 = (void *) result;
         args_ptr->arg4 = (void *) result;
