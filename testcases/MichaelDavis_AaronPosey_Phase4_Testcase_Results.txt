@@ -13,15 +13,15 @@ P Testcase 03
 P Testcase 04
 P Testcase 05
 P Testcase 06
-_ Testcase 07
+P Testcase 07
 P Testcase 08
 P Testcase 09
 P Testcase 10
 P Testcase 11 
-_ Testcase 12
+P Testcase 12
 
 
-Test cases passed 11/13
+Test cases passed 13/13
 
 
 Our Output:
@@ -174,6 +174,18 @@ start4(): Read from disk: One last chance
 All processes completed.
 
 starting test 07 ....
+
+start4(): disk scheduling test, create 4 processes that write
+          various places on the disk.  After the 4 processes are
+          done, start4 reads the 4 locations & prints the
+          results.  Uses disk 1.
+start4(): read: One flew East
+start4(): read: One flew West
+start4(): read: One flew over the coo-coo's nest
+start4(): read: --did it work?
+start4(): done 111
+All processes completed.
+
 starting test 08 ....
 
 start4(): Attempt to write to a non-existant disk, disk 3
@@ -271,3 +283,34 @@ start4(): done 31
 All processes completed.
 
 starting test 12 ....
+
+start4(): Spawning 5 children to sleep
+ChildS(0): Sleeping for 5 seconds
+ChildS(1): Sleeping for 4 seconds
+ChildS(2): Sleeping for 3 seconds
+ChildS(3): Sleeping for 2 seconds
+ChildS(4): Sleeping for 1 seconds
+start4(): Spawning 4 children to diskfuncs
+
+ChildDW0(): writing to disk 0, track 5, sector 0
+
+ChildDW1(): writing to disk 1, track 5, sector 0
+
+ChildR0(): reading from disk 0, track 5, sector 0
+
+ChildR1(): reading from disk 1, track 5, sector 0
+ChildDW0(): DiskWrite0 returned status = 0
+ChildDW1(): DiskWrite1 returned status = 0
+ChildR0(): DiskRead returned status = 0
+ChildR0(): disk_buf_B contains:
+ChildDW0(): A wonderful message to put on the disk...
+ChildR1(): DiskRead returned status = 0
+ChildR1(): disk_buf_B contains:
+ChildDW1(): A wonderful message to put on the disk...
+ChildS(4): After sleeping 1 seconds, diff in sys_clock is 1049524
+ChildS(3): After sleeping 2 seconds, diff in sys_clock is 2049627
+ChildS(2): After sleeping 3 seconds, diff in sys_clock is 3049719
+ChildS(1): After sleeping 4 seconds, diff in sys_clock is 4049822
+ChildS(0): After sleeping 5 seconds, diff in sys_clock is 5049924
+start4(): done.
+All processes completed.

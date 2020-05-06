@@ -13,85 +13,52 @@ int ubiq(int);
 
 int k1(char *arg)
 {
-    printf("spawned k1\n");
-    printf("check\n");
     ubiq(0);
-    printf("k1 ubiq 1 done\n");
     ubiq(3);
-    printf("k1 ubiq 2 done\n");
     ubiq(0);
-    printf("k1 ubiq 3 done\n");
     ubiq(5);
-    printf("k1 ubiq 4 done\n");
     ubiq(0);
-    printf("k1 ubiq 5 done\n");
     ubiq(5);
-    printf("k1 ubiq 6 done\n");
     ubiq(0); 
-    printf("k1 ubiq 7 done\n");
     Terminate(2);
     return 0;
 }
 
 int k2(char *arg)
 {
-    printf("spawned k2\n");
     ubiq(5);
-    printf("k2 ubiq 1 done\n");
     ubiq(4);
-    printf("k2 ubiq 2 done\n");
     ubiq(1);
-    printf("k2 ubiq 3 done\n");
     ubiq(6);
-    printf("k2 ubiq 4 done\n");
     ubiq(1);
-    printf("k2 ubiq 5 done\n");
     ubiq(6);
-    printf("k2 ubiq 6 done\n");
     ubiq(1);
-    printf("k2 ubiq 7 done\n");
     Terminate(3);
     return 0;
 }
 
 int k3(char *arg)
 {
-    printf("spawned k3\n");
     ubiq(9);
-    printf("k3 ubiq 1 done\n");
     ubiq(9);
-    printf("k3 ubiq 2 done\n");
     ubiq(2);
-    printf("k3 ubiq 3 done\n");
     ubiq(7);
-    printf("k3 ubiq 4 done\n");
     ubiq(2);
-    printf("k3 ubiq 5 done\n");
     ubiq(7);
-    printf("k3 ubiq 6 done\n");
     ubiq(2);
-    printf("k3 ubiq 7 done\n");
     Terminate(4);
     return 0;
 }
 
 int k4(char *arg)
 {
-    printf("spawned k4\n");
     ubiq(2);
-    printf("k4 ubiq 1 done\n");
     ubiq(9);
-    printf("k4 ubiq 2 done\n");
     ubiq(3);
-    printf("k4 ubiq 3 done\n");
     ubiq(8);
-    printf("k4 ubiq 4 done\n");
     ubiq(3);
-    printf("k4 ubiq 5 done\n");
     ubiq(8);
-    printf("k4 ubiq 6 done\n");
     ubiq(3);
-    printf("k4 ubiq 7 done\n");
     Terminate(5);
     return 0;
 }

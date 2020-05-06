@@ -45,7 +45,7 @@ void print_sems(void);
 
 /* -------------------------- Globals ------------------------------------- */
 
-static int debugflag4 = 1;
+static int debugflag4 = 0;
 
 static int running; /*semaphore to synchronize drivers and start3*/
 
@@ -72,6 +72,8 @@ static int sleep_semaphore;
 static int disk_semaphore;
 
 static int DQ_semaphore;
+
+static int driver_sync_semaphore;
 
 /* -------------------------- Functions ----------------------------------- */
 
@@ -125,10 +127,11 @@ start3(char *arg)
     disk_semaphore = semcreate_real(0);
     DQ_semaphore = semcreate_real(1);
     running = semcreate_real(0);
+    driver_sync_semaphore = semcreate_real(1);
 
     if (DEBUG4 && debugflag4)
     {
-        print_sems();
+        //print_sems();
         console ("start3(): fork clock driver.\n");
     }
     clockPID = fork1("Clock driver", ClockDriver, NULL, USLOSS_MIN_STACK, 2);
@@ -178,7 +181,7 @@ start3(char *arg)
 
     if (DEBUG4 && debugflag4)
     {
-        print_sems();   //print sems to see where they are
+        //print_sems();   //print sems to see where they are
     }
 
     /*
@@ -216,7 +219,7 @@ start3(char *arg)
         if (DEBUG4 && debugflag4)
         {
             console ("start3(): semv disk_semaphore\n");
-            print_sems();
+            //print_sems();
         }
         semv_real(disk_semaphore);
 
@@ -246,7 +249,7 @@ ClockDriver(char *arg)
      */
     if (DEBUG4 && debugflag4)
     {
-        console ("ClockDriver(): semv on running semaphore\n");
+        //console ("ClockDriver(): semv on running semaphore\n");
     }
     semv_real(running);
     psr_set(psr_get() | PSR_CURRENT_INT);
@@ -275,14 +278,14 @@ ClockDriver(char *arg)
                 //remove the proc from the SleepQ 
                 if (DEBUG4 && debugflag4)
                 {
-                    console ("ClockDriver(): removing proc from SleepQ\n");
+                   // console ("ClockDriver(): removing proc from SleepQ\n");
                 }
                 sleep_number = remove_sleep_q(proc_to_wake);
 
                 //wake the process
                 if (DEBUG4 && debugflag4)
                 {
-                    console ("ClockDriver(): waking proc\n");
+                   // console ("ClockDriver(): waking proc\n");
                 }
                 semv_real(proc_to_wake->private_sem);    
             } 
@@ -349,20 +352,6 @@ DiskDriver(char *arg)
 
     //let start3 know that driver is running
     semv_real(running);
-
-    //allow DiskDriver(1) to finish getting # of tracks
-    /*
-    if (unit == 0)
-    {
-        //down on running semaphore
-        semp_real(running);
-    }
-    else
-    {
-        //up on running semaphore
-        semv_real(running);
-    }
-    */
     
     if (DEBUG4 && debugflag4)
     {
@@ -396,7 +385,7 @@ DiskDriver(char *arg)
                 //enter critical region
                 if (DEBUG4 && debugflag4)
                 {
-                    console ("\nDiskDriver(%d): semP on dq_sem to enter critical region\n\n", unit);
+                    console ("\nDiskDriver(%d): size - semP on dq_sem to enter critical region\n\n", unit);
                 }
                 semp_real(DQ_semaphore);
 
@@ -405,14 +394,14 @@ DiskDriver(char *arg)
                 //leave critical region
                 if (DEBUG4 && debugflag4)
                 {
-                    console ("DiskDriver(%d): semV on DQ_sem to leave critical region\n", unit);
+                    console ("DiskDriver(%d): size - semV on DQ_sem to leave critical region\n", unit);
                 }
                 semv_real(DQ_semaphore);
 
                 //wake up user on private sem
                 if (DEBUG4 && debugflag4)
                 {
-                    console ("DiskDriver(%d): semv on private_sem to unblock proc\n", unit);
+                    console ("DiskDriver(%d): size - semv on private_sem to unblock proc\n", unit);
                 }
                 semv_real(current_req->private_sem);
             }
@@ -421,11 +410,25 @@ DiskDriver(char *arg)
                 //enter critical region
                 if (DEBUG4 && debugflag4)
                 {
-                    console ("\nDiskDriver(%d): semP on dq_sem to enter critical region\n\n", unit);
+                    console ("\nDiskDriver(%d): rw - semP on dq_sem to enter critical region\n\n", unit);
                 }
                 semp_real(DQ_semaphore);
 
                 DQ_number = remove_disk_q(current_req); //remove current_req from DQ
+
+                //leave critical region
+                if (DEBUG4 && debugflag4)
+                {
+                    console ("DiskDriver(%d): rw - semV on DQ_sem to leave critical region\n", unit);
+                }
+                semv_real(DQ_semaphore);
+
+                //enter critical region for disk operations
+                if (DEBUG4 && debugflag4)                              
+                {
+                    console ("DiskDriver(%d): rw - semp on driver_sync sem enter region\n", unit);
+                }
+                semp_real(driver_sync_semaphore);
 
                 //disk seek first to adjust arm
                 my_request.opr  = DISK_SEEK;
@@ -434,7 +437,7 @@ DiskDriver(char *arg)
 
                 if (result != DEV_OK) 
                 {
-                    console("DiskDriver (%d): did not get DEV_OK on DISK_SEEK call\n", unit);
+                    console("DiskDriver (%d): did not get DEV_OK on 1st DISK_SEEK call\n", unit);
                     console("DiskDriver (%d): is the file disk%d present???\n", unit, current_req->unit);
                     halt(1);
                 }
@@ -494,37 +497,19 @@ DiskDriver(char *arg)
                     }
                 }
 
-                /*
-                my_request.opr = current_req->operation;
-                my_request.reg1 = current_req->sector_start;
-                my_request.reg2 = current_req->disk_buf;
-                result = device_output(DISK_DEV, current_req->unit, &my_request);
-
-                if (result != DEV_OK) 
+                //leave critical region for disk drivers
+                if (DEBUG4 && debugflag4)                              
                 {
-                    console("DiskDriver (%d): did not get DEV_OK on %d call\n", unit, current_req->operation);
-                    console("DiskDriver (%d): is the file disk%d present???\n", unit, current_req->unit);
-                    halt(1);
+                    console ("DiskDriver(%d): rw - semv on driver_sync sem leave region\n", unit);
                 }
-
-                waitdevice(DISK_DEV, current_req->unit, &status);
-                current_req->status = status;
-                */
-
-                //leave critical region
-                if (DEBUG4 && debugflag4)
-                {
-                    console ("DiskDriver(%d): semV on DQ_sem to leave critical region\n", unit);
-                }
-                semv_real(DQ_semaphore);
-
-                //wake up user on private sem       //*******************should this be outside of while loop.  Shouldn't we wait until read write loop completes b4 
-                if (DEBUG4 && debugflag4)                               //waking the process????????????
-                {
-                    console ("DiskDriver(%d): semv on private_sem to unblock proc\n", unit);
-                }
-                semv_real(current_req->private_sem);
+                semv_real(driver_sync_semaphore);
             }
+            //wake up user on private sem      
+            if (DEBUG4 && debugflag4)                              
+            {
+                console ("DiskDriver(%d): rw - semv on private_sem to unblock proc\n", unit);
+            }
+            semv_real(current_req->private_sem);
         }    
     }
 
@@ -547,24 +532,24 @@ sleep_first(sysargs *args_ptr)
     if (seconds < 0)
     {
         result = -1;
-        console("sleep_first(): illegal value, seconds < 0.\n");
+        //console("sleep_first(): illegal value, seconds < 0.\n");
         args_ptr->arg4 = (void *) result;
         return;
     }
 
     if (DEBUG4 && debugflag4)
     {
-        console ("sleep_first(): calling sleep_real\n");
+        //console ("sleep_first(): calling sleep_real\n");
     }
     result = sleep_real(seconds);
     if (result == -1)
     {
-        console("sleep_first(): sleep_real returned -1, illegal value.\n");
+        //console("sleep_first(): sleep_real returned -1, illegal value.\n");
     }
 
     if (DEBUG4 && debugflag4)
     {
-        console ("sleep_first(): sleep_real returned\n");
+        //console ("sleep_first(): sleep_real returned\n");
     }
     args_ptr->arg4 = (void *) result;
 
@@ -579,7 +564,7 @@ sleep_real(int seconds)
     //attempt to enter the critical region
     if (DEBUG4 && debugflag4)
     {
-        console ("sleep_real(): call semp on sleep_sem\n");
+        //console ("sleep_real(): call semp on sleep_sem\n");
     }
     semp_real(sleep_semaphore);
 
@@ -589,7 +574,7 @@ sleep_real(int seconds)
     //put process onto the sleep queue
     if (DEBUG4 && debugflag4)
     {
-        console ("sleep_real(): call insert_sleep_q\n");
+        //console ("sleep_real(): call insert_sleep_q\n");
     }
     sleep_number = insert_sleep_q(current_proc);
 
@@ -603,14 +588,14 @@ sleep_real(int seconds)
     //leave the critical region
     if (DEBUG4 && debugflag4)
     {
-        console ("sleep_real(): call semv on sleep_sem\n");
+        //console ("sleep_real(): call semv on sleep_sem\n");
     }
     semv_real(sleep_semaphore);
 
     //block the process possibly with sem/mutex/mailboxreceive
     if (DEBUG4 && debugflag4)
     {
-        console ("sleep_real(): call semp on proc's private sem to block it\n");
+        //console ("sleep_real(): call semp on proc's private sem to block it\n");
     }
     semp_real(current_proc->private_sem);
 
@@ -959,7 +944,7 @@ insert_sleep_q(driver_proc_ptr proc_ptr)
         /* process goes at front of SleepQ */
         if (DEBUG4 && debugflag4)
         {
-            console ("insert_sleep_q(): SleepQ was empty, now has 1 entry\n");
+            //console ("insert_sleep_q(): SleepQ was empty, now has 1 entry\n");
         }
         SleepQ = proc_ptr;
         num_sleep_procs++;
@@ -968,7 +953,7 @@ insert_sleep_q(driver_proc_ptr proc_ptr)
     {
         if (DEBUG4 && debugflag4)
         {
-            console ("insert_sleep_q():SleepQ wasn't empty, should have >1\n");
+            //console ("insert_sleep_q():SleepQ wasn't empty, should have >1\n");
         }
         num_sleep_procs++; //starts at 1
         while (walker->next_ptr != NULL) //counts how many are in Q already
@@ -997,14 +982,14 @@ remove_sleep_q(driver_proc_ptr proc_ptr)
     //enter critical region
     if (DEBUG4 && debugflag4)
     {
-        console ("remove_sleep_q(): semp on sleep_sem\n");
+        //console ("remove_sleep_q(): semp on sleep_sem\n");
     }
     semp_real(sleep_semaphore);
 
     //if SleepQ is empty
     if(num_sleep_procs == 0)
     {
-        console("remove_sleep_q(): SleepQ empty. Return.\n");
+        //console("remove_sleep_q(): SleepQ empty. Return.\n");
     }
     
     //elseif SleepQ has one entry
@@ -1012,7 +997,7 @@ remove_sleep_q(driver_proc_ptr proc_ptr)
     {
         if (DEBUG4 && debugflag4)
         {
-            console ("remove_sleep_q(): SleepQ had 1 entry, now 0\n");
+            //console ("remove_sleep_q(): SleepQ had 1 entry, now 0\n");
         }
         SleepQ = NULL;
         num_sleep_procs--;
@@ -1023,7 +1008,7 @@ remove_sleep_q(driver_proc_ptr proc_ptr)
     {
         if (DEBUG4 && debugflag4)
         {
-            console ("remove_sleep_q(): SleepQ had >1 entry\n");
+            //console ("remove_sleep_q(): SleepQ had >1 entry\n");
         }
         if (SleepQ == proc_ptr) //1st entry to be removed
         {
@@ -1048,7 +1033,7 @@ remove_sleep_q(driver_proc_ptr proc_ptr)
     //leave critical region
     if (DEBUG4 && debugflag4)
     {
-        console ("remove_sleep_q(): semv on sleep_sem\n");
+        //console ("remove_sleep_q(): semv on sleep_sem\n");
     }
     semv_real(sleep_semaphore);
 
