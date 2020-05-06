@@ -45,7 +45,7 @@ void print_sems(void);
 
 /* -------------------------- Globals ------------------------------------- */
 
-static int debugflag4 = 0;
+static int debugflag4 = 1;
 
 static int running; /*semaphore to synchronize drivers and start3*/
 
@@ -396,7 +396,7 @@ DiskDriver(char *arg)
                 //enter critical region
                 if (DEBUG4 && debugflag4)
                 {
-                    console ("DiskDriver(%d): semp on dq_sem to enter critical region\n", unit);
+                    console ("\nDiskDriver(%d): semP on dq_sem to enter critical region\n\n", unit);
                 }
                 semp_real(DQ_semaphore);
 
@@ -405,7 +405,7 @@ DiskDriver(char *arg)
                 //leave critical region
                 if (DEBUG4 && debugflag4)
                 {
-                    console ("DiskDriver(%d): semv on DQ_sem to leave critical region\n", unit);
+                    console ("DiskDriver(%d): semV on DQ_sem to leave critical region\n", unit);
                 }
                 semv_real(DQ_semaphore);
 
@@ -421,7 +421,7 @@ DiskDriver(char *arg)
                 //enter critical region
                 if (DEBUG4 && debugflag4)
                 {
-                    console ("DiskDriver(%d): semp on dq_sem to enter critical region\n", unit);
+                    console ("\nDiskDriver(%d): semP on dq_sem to enter critical region\n\n", unit);
                 }
                 semp_real(DQ_semaphore);
 
@@ -514,12 +514,12 @@ DiskDriver(char *arg)
                 //leave critical region
                 if (DEBUG4 && debugflag4)
                 {
-                    console ("DiskDriver(%d): semv on DQ_sem to leave critical region\n", unit);
+                    console ("DiskDriver(%d): semV on DQ_sem to leave critical region\n", unit);
                 }
                 semv_real(DQ_semaphore);
 
-                //wake up user on private sem
-                if (DEBUG4 && debugflag4)
+                //wake up user on private sem       //*******************should this be outside of while loop.  Shouldn't we wait until read write loop completes b4 
+                if (DEBUG4 && debugflag4)                               //waking the process????????????
                 {
                     console ("DiskDriver(%d): semv on private_sem to unblock proc\n", unit);
                 }
@@ -682,7 +682,7 @@ disk_read_real(int unit, int track, int first, int sectors, void *buffer)
     //attempt to enter the critical region
     if (DEBUG4 && debugflag4)
     {
-        console ("disk_read_real(): call semp on DQ_sem\n");
+        console ("\ndisk_read_real(): call semP on DQ_sem\n\n");
     }
     semp_real(DQ_semaphore);
 
@@ -702,6 +702,10 @@ disk_read_real(int unit, int track, int first, int sectors, void *buffer)
     DQ_number = insert_disk_q(current_proc);
 
     //leave the critical region
+    if (DEBUG4 && debugflag4)
+    {
+        console ("disk_read_real(): call semV on DQ_sem\n");
+    }
     semv_real(DQ_semaphore);
 
     //alert Disk Driver there's an entry in DQ
@@ -802,7 +806,7 @@ disk_write_real(int unit, int track, int first, int sectors, void *buffer)
     //attempt to enter the critical region
     if (DEBUG4 && debugflag4)
     {
-        console ("disk_write_real(): call semp on DQ_sem\n");
+        console ("\ndisk_write_real(): call semp on DQ_sem\n\n");
     }
     semp_real(DQ_semaphore);
 
@@ -822,6 +826,10 @@ disk_write_real(int unit, int track, int first, int sectors, void *buffer)
     DQ_number = insert_disk_q(current_proc);
 
     //leave the critical region
+    if (DEBUG4 && debugflag4)
+    {
+        console ("disk_write_real(): call semV on DQ_sem\n");
+    }
     semv_real(DQ_semaphore);
 
     //alert Disk Driver there's an entry in DQ
@@ -897,7 +905,7 @@ disk_size_real(int unit, int *sector, int *track, int *disk)
     //attempt to enter the critical region
     if (DEBUG4 && debugflag4)
     {
-        console ("disk_size_real(): call semp on DQ_sem\n");
+        console ("\ndisk_size_real(): call semP on DQ_sem\n\n");
     }
     semp_real(DQ_semaphore);
 
@@ -907,6 +915,10 @@ disk_size_real(int unit, int *sector, int *track, int *disk)
     DQ_number = insert_disk_q(current_proc);
 
     //leave the critical region
+    if (DEBUG4 && debugflag4)
+    {
+        console ("disk_size_real(): call semV on DQ_sem\n");
+    }
     semv_real(DQ_semaphore);
 
     //alert Disk Driver there's an entry in DQ
