@@ -1,32 +1,34 @@
 Aaron Posey
+Michael Davis
+5/5/2020
+CSCV452
+Phase 4 Test Results
+Please consider awarding extra points for the extra cleanliness of our test results page, thank you :)
 
-Using your phase 1 and 2 library for testing
-
-
-Test cases for phase3
+Using your phase 1, 2 and 3 library for testing
+Test cases for phase4
 
 (Quick Summary)
-P Testcase 00
-P Testcase 01
-P Testcase 02
-P Testcase 03
-P Testcase 04
-P Testcase 05
-P Testcase 06
-P Testcase 07
-P Testcase 08
-P Testcase 09
-P Testcase 10
-P Testcase 11 
-P Testcase 12
-
+PASS Testcase 00
+PASS Testcase 01
+PASS Testcase 02
+PASS Testcase 03
+PASS Testcase 04
+PASS Testcase 05
+PASS Testcase 06
+PASS Testcase 07
+PASS Testcase 08
+PASS Testcase 09
+PASS Testcase 10
+PASS Testcase 11 
+PASS Testcase 12
 
 Test cases passed 13/13
 
 
 Our Output:
 
-starting test 00 ....
+starting test 00 ..............................................
 
 start4(): Start 5 children who all sleep for 10 seconds. Upon
           waking up, each child checks if its sleep time was at
@@ -44,7 +46,9 @@ Child5(): Sleep done at time 10090210
 start4(): Test sleep done.
 All processes completed.
 
-starting test 01 ....
+
+
+starting test 01 ..............................................
 
 start4(): Spawning Child(0)
 start4(): Spawning Child(1)
@@ -98,7 +102,9 @@ Child0(): After sleeping 30 seconds, diff in sys_clock is 30089763
 start4(): Wait returned 0, pid:9, status 10
 All processes completed.
 
-starting test 02 ....
+
+
+starting test 02 ..............................................
 
 start4(): started
 start4(): unit 0, sector size 512, track size 16, disk size 16
@@ -106,7 +112,9 @@ start4(): unit 1, sector size 512, track size 16, disk size 32
 start4(): calling Terminate
 All processes completed.
 
-starting test 03 ....
+
+
+starting test 03 ..............................................
 
 start4(): started
 start4(): unit 0, sector size 512, track size 16, disk size 16
@@ -122,7 +130,9 @@ A wonderful message to put on the disk...
 start4(): calling Terminate
 All processes completed.
 
-starting test 04 ....
+
+
+starting test 04 ..............................................
 
 start4(): Testing disk 0
 start4(): Read from disk: This is a test
@@ -141,7 +151,9 @@ start4(): Read from disk: One last chance
 start4(): Terminating
 All processes completed.
 
-starting test 05 ....
+
+
+starting test 05 ..............................................
 
 start4(): Writing data to 3 disk sectors, then reading them back
           Confirm that data read back matches data read in
@@ -152,7 +164,9 @@ start4(): Test of disk 1 succeeded.
 start4(): Done.
 All processes completed.
 
-starting test 06 ....
+
+
+starting test 06 ..............................................
 
 start4(): Writing data to 3 disk sectors, wrapping to next track
 
@@ -173,7 +187,9 @@ start4(): Read from disk: One last chance
 
 All processes completed.
 
-starting test 07 ....
+
+
+starting test 07 ..............................................
 
 start4(): disk scheduling test, create 4 processes that write
           various places on the disk.  After the 4 processes are
@@ -186,13 +202,17 @@ start4(): read: --did it work?
 start4(): done 111
 All processes completed.
 
-starting test 08 ....
+
+
+starting test 08 ..............................................
 
 start4(): Attempt to write to a non-existant disk, disk 3
 start4(): done
 All processes completed.
 
-starting test 09 ....
+
+
+starting test 09 ..............................................
 
 start4(): disk scheduling test, 8 children
           algorithm test           
@@ -224,7 +244,9 @@ process 16 quit with status 9
 start4(): done 33
 All processes completed.
 
-starting test 10 ....
+
+
+starting test 10 ..............................................
 
 start4(): disk scheduling test, 8 children
           algorithm test           
@@ -256,7 +278,9 @@ process 16 quit with status 9
 start4(): done 33
 All processes completed.
 
-starting test 11 ....
+
+
+starting test 11 ..............................................
 
 start4(): disk scheduling test, create 6 processes that write
           3 to disk0         
@@ -282,7 +306,9 @@ process 14 quit with status 7
 start4(): done 31
 All processes completed.
 
-starting test 12 ....
+
+
+starting test 12 ..............................................
 
 start4(): Spawning 5 children to sleep
 ChildS(0): Sleeping for 5 seconds
